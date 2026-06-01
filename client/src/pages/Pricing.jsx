@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { getToken } from "../api/client.js";
 
@@ -49,11 +50,16 @@ const plans = [
 export default function Pricing() {
   const navigate = useNavigate();
 
+  // Logged-in users go straight to the app
+  useEffect(() => {
+    if (getToken()) navigate("/dashboard", { replace: true });
+  }, []);
+
   function handleCta(plan) {
     if (plan.name === "Scale") {
       window.location.href = "mailto:hello@leadrescue.com?subject=Scale Plan Inquiry";
     } else {
-      navigate(getToken() ? "/dashboard" : "/login");
+      navigate("/login");
     }
   }
 
