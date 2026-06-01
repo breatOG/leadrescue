@@ -220,12 +220,6 @@ router.post(
       data: { status: lead.status === "new" ? "texting" : lead.status, lastMessage: "AI voice call started" }
     });
 
-    notifyContractor({
-      business,
-      lead: updatedLead,
-      summary: "An AI voice call started and will be attached to this lead."
-    }).catch((e) => console.error("Voice notification failed:", e.message));
-
     await prisma.message.create({
       data: { leadId: updatedLead.id, direction: "inbound", channel: "voice", body: "[call started]" }
     });
