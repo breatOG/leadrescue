@@ -14,7 +14,10 @@ export default function Leads() {
   const [leads, setLeads] = useState([]);
 
   useEffect(() => {
-    api("/api/leads").then((data) => setLeads(data.leads));
+    function load() { api("/api/leads").then((data) => setLeads(data.leads)); }
+    load();
+    const interval = setInterval(load, 15000);
+    return () => clearInterval(interval);
   }, []);
 
   return (

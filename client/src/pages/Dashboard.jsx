@@ -8,7 +8,10 @@ export default function Dashboard() {
   const [data, setData] = useState(null);
 
   useEffect(() => {
-    api("/api/dashboard").then(setData);
+    function load() { api("/api/dashboard").then(setData); }
+    load();
+    const interval = setInterval(load, 15000);
+    return () => clearInterval(interval);
   }, []);
 
   if (!data) return <div className="page"><h1>Dashboard</h1><p>Loading...</p></div>;

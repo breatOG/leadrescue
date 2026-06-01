@@ -60,101 +60,29 @@ async function main() {
 
   const business = await prisma.business.findUnique({ where: { ownerId: user.id } });
 
-  await prisma.serviceType.deleteMany({ where: { businessId: business.id } });
-  await prisma.businessAvailability.deleteMany({ where: { businessId: business.id } });
-  await prisma.lead.deleteMany({ where: { businessId: business.id } });
+  // Only set up service types and availability if not already configured
+  const existingTypes = await prisma.serviceType.count({ where: { businessId: business.id } });
+  if (existingTypes === 0) {
+    await prisma.serviceType.createMany({
+      data: ["AC repair", "Furnace repair", "No heat call", "No cooling call", "Seasonal maintenance"].map((name) => ({
+        businessId: business.id,
+        name
+      }))
+    });
+  }
 
-  await prisma.serviceType.createMany({
-    data: ["AC repair", "Furnace repair", "No heat call", "No cooling call", "Seasonal maintenance"].map((name) => ({
-      businessId: business.id,
-      name
-    }))
-  });
+  const existingAvailability = await prisma.businessAvailability.count({ where: { businessId: business.id } });
+  if (existingAvailability === 0) {
+    await prisma.businessAvailability.createMany({
+      data: [1, 2, 3, 4, 5].flatMap((dayOfWeek) => [
+        { businessId: business.id, dayOfWeek, startTime: "09:00", endTime: "12:00", slotMinutes: 60 },
+        { businessId: business.id, dayOfWeek, startTime: "13:00", endTime: "17:00", slotMinutes: 60 }
+      ])
+    });
+  }
 
-  await prisma.businessAvailability.createMany({
-    data: [1, 2, 3, 4, 5].flatMap((dayOfWeek) => [
-      { businessId: business.id, dayOfWeek, startTime: "09:00", endTime: "12:00", slotMinutes: 60 },
-      { businessId: business.id, dayOfWeek, startTime: "13:00", endTime: "17:00", slotMinutes: 60 }
-    ])
-  });
-
-  const leadOne = await prisma.lead.create({
-    data: {
-      businessId: business.id,
-      customerName: "Maya Thompson",
-      customerPhone: "+13175550101",
-      address: "412 Maple Street",
-      zipCode: "46220",
-      jobType: "No heat call",
-      urgency: "today",
-      issueDescription: "Furnace stopped heating after missed call.",
-      source: "missed_call",
-      status: "appointment_booked",
-      priority: "high",
-      aiSummary: "High priority no-heat HVAC call. Customer is available today and provided ZIP 46220.",
-      lastMessage: "You're booked for tomorrow morning. The team has your details."
-    }
-  });
-
-  await prisma.message.createMany({
-    data: [
-      {
-        leadId: leadOne.id,
-        direction: "outbound",
-        channel: "sms",
-        body: "Hi, sorry we missed your call to Indy Comfort HVAC. What HVAC issue do you need help with?"
-      },
-      {
-        leadId: leadOne.id,
-        direction: "inbound",
-        channel: "sms",
-        body: "My name is Maya. My furnace stopped heating and I need help today. 46220."
-      },
-      {
-        leadId: leadOne.id,
-        direction: "outbound",
-        channel: "sms",
-        body: "Thanks, I have enough to get this started. Which appointment works best?"
-      }
-    ]
-  });
-
-  await prisma.appointment.create({
-    data: {
-      businessId: business.id,
-      leadId: leadOne.id,
-      startAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      endAt: new Date(Date.now() + 25 * 60 * 60 * 1000),
-      notes: "Demo booked appointment."
-    }
-  });
-
-  const leadTwo = await prisma.lead.create({
-    data: {
-      businessId: business.id,
-      customerPhone: "+13175550102",
-      zipCode: "46032",
-      jobType: "HVAC repair",
-      urgency: "this week",
-      issueDescription: "AC is blowing warm air.",
-      source: "sms",
-      status: "qualified",
-      priority: "normal",
-      aiSummary: "Normal HVAC lead in Carmel. Needs AC repair this week.",
-      lastMessage: "Which appointment works best?"
-    }
-  });
-
-  await prisma.message.createMany({
-    data: [
-      { leadId: leadTwo.id, direction: "inbound", channel: "sms", body: "AC is blowing warm air. I am in 46032." },
-      { leadId: leadTwo.id, direction: "outbound", channel: "sms", body: "How urgent is this: emergency, today, this week, or flexible?" },
-      { leadId: leadTwo.id, direction: "inbound", channel: "sms", body: "This week is fine." }
-    ]
-  });
-
-  console.log("Seeded LeadRescue demo data.");
-  console.log("Login: demo@leadrescue.local / password123");
+  console.log("LeadRescue setup complete.");
+  console.log(`Login: ${process.env.TWILIO_PHONE_NUMBER || "+13179519758"} / LeadRescue1!`);
 }
 
 main()
