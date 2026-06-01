@@ -37,8 +37,10 @@ Qualify the caller and help them get scheduled. Collect only what is needed:
 - When you have the key details, give a brief recap and say the contractor has the information and will follow up. Do not hang up on your own.`;
 
 function getPublicWsUrl(req) {
-  if (process.env.APP_BASE_URL) {
-    return process.env.APP_BASE_URL.replace(/^http/i, "ws");
+  let base = process.env.APP_BASE_URL;
+  if (base) {
+    if (!/^https?:\/\//i.test(base)) base = `https://${base}`;
+    return base.replace(/^https/i, "wss").replace(/^http/i, "ws");
   }
   const proto = (req.headers["x-forwarded-proto"] || req.protocol).split(",")[0].trim();
   const host = req.headers["x-forwarded-host"] || req.get("host");
