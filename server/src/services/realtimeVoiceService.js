@@ -326,7 +326,7 @@ export function handleTwilioVoiceStream(twilioWs) {
   const openAiWs = new WebSocket(`wss://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`, {
     headers: {
       Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      "OpenAI-Safety-Identifier": "leadrescue-phone-caller"
+      "OpenAI-Beta": "realtime=v1"
     }
   });
 
