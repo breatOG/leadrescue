@@ -144,6 +144,7 @@ async function handleAppointmentChoice({ business, lead, body }) {
 router.post(
   "/twilio/sms",
   asyncHandler(async (req, res) => {
+    console.log(`[sms] Incoming: From=${req.body.From} To=${req.body.To} Body="${req.body.Body}"`);
     const business = await findBusinessByTwilioNumber(req.body.To);
     await saveWebhook({ businessId: business.id, eventType: "sms", payload: req.body });
 
