@@ -214,6 +214,7 @@ function updateRealtimeSession(openAiWs, callerMemory = "") {
   sendJson(openAiWs, {
     type: "session.update",
     session: {
+      type: "conversation",
       modalities: ["audio", "text"],
       instructions: `${DEFAULT_INSTRUCTIONS}\n\n${callerMemory}`,
       voice,
