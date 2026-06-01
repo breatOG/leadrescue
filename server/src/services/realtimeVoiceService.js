@@ -1,6 +1,7 @@
 import WebSocket from "ws";
 import { prisma } from "../prisma/client.js";
 import { runAiLeadAgent } from "./aiLeadAgent.js";
+import { notifyContractor } from "./notificationService.js";
 
 const DEFAULT_INSTRUCTIONS = `# Role
 You are the front-desk receptionist for the contractor. You sound like a calm, friendly human office coordinator, not a bot.
@@ -233,7 +234,8 @@ function updateRealtimeSession(openAiWs, callerMemory = "") {
       audio: {
         input: {
           format: { type: "audio/pcmu" },
-          turn_detection: { type: "semantic_vad" }
+          turn_detection: { type: "semantic_vad" },
+          transcription: { model: "gpt-realtime-whisper" }
         },
         output: {
           format: { type: "audio/pcm", rate: 24000 },
@@ -321,16 +323,19 @@ async function saveVoiceCall({ leadId, businessId, transcript }) {
   const messages = await prisma.message.findMany({ where: { leadId }, orderBy: { createdAt: "asc" } });
   const aiResult = await runAiLeadAgent({ business, lead, messages });
 
-  await prisma.lead.update({
+  const updatedLead = await prisma.lead.update({
     where: { id: leadId },
     data: {
       ...aiResult.extractedFields,
       priority: aiResult.leadPriority,
-      status: aiResult.leadStatus === "new" ? "qualified" : aiResult.leadStatus,
+      status: "qualified",
       aiSummary: aiResult.contractorSummary,
       lastMessage: transcript[transcript.length - 1]?.body || lead.lastMessage
     }
   });
+
+  notifyContractor({ business, lead: updatedLead, summary: aiResult.contractorSummary })
+    .catch((e) => console.error("[voice-ai] Notify failed:", e.message));
 }
 
 export function handleTwilioVoiceStream(twilioWs) {
