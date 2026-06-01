@@ -340,6 +340,8 @@ export function handleTwilioVoiceStream(twilioWs) {
   }
 
   const convertPcmToMulaw = makePcmConverter();
+  let aiSpeaking = false;
+  let callerAudioAllowedAt = 0;
   let streamSid = null;
   let sessionReady = false;
   let leadId = null;
@@ -420,6 +422,7 @@ export function handleTwilioVoiceStream(twilioWs) {
     if (isAudioDeltaEvent(event) && streamSid) {
       const delta = getAudioDelta(event);
       if (delta) {
+        aiSpeaking = true;
         const mulaw = convertPcmToMulaw(delta);
         if (mulaw) {
           sendJson(twilioWs, {
@@ -429,6 +432,12 @@ export function handleTwilioVoiceStream(twilioWs) {
           });
         }
       }
+    }
+
+    if (event.type === "response.output_audio.done") {
+      aiSpeaking = false;
+      // Give 1.5s for audio to finish playing on caller's phone before re-opening mic
+      callerAudioAllowedAt = Date.now() + 1500;
     }
 
     if (event.type === "response.output_item.done" && event.item?.type === "function_call" && event.item?.name === "end_call") {
@@ -487,7 +496,7 @@ export function handleTwilioVoiceStream(twilioWs) {
     }
 
     if (event.event === "media" && event.media?.payload) {
-      if (openAiWs.readyState === WebSocket.OPEN) {
+      if (!aiSpeaking && Date.now() >= callerAudioAllowedAt && openAiWs.readyState === WebSocket.OPEN) {
         sendJson(openAiWs, {
           type: "input_audio_buffer.append",
           audio: event.media.payload
