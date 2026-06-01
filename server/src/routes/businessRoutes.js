@@ -139,6 +139,49 @@ router.post(
   })
 );
 
+// POST /api/business/connect-existing-number — wire up a number already in the Twilio account
+router.post(
+  "/connect-existing-number",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const { phoneNumber } = req.body;
+    if (!phoneNumber) return res.status(400).json({ error: "phoneNumber is required." });
+
+    const baseUrl = (process.env.APP_BASE_URL || "").replace(/\/$/, "");
+    if (!baseUrl) return res.status(503).json({ error: "APP_BASE_URL is not set on the server." });
+
+    const client = getTwilioAdminClient();
+
+    // Find the number in the Twilio account
+    const normalized = phoneNumber.replace(/\s/g, "");
+    const [number] = await client.incomingPhoneNumbers.list({ phoneNumber: normalized, limit: 1 });
+    if (!number) {
+      return res.status(404).json({
+        error: `${phoneNumber} was not found in your Twilio account. Make sure it's already added there before connecting it here.`
+      });
+    }
+
+    // Configure webhooks
+    await client.incomingPhoneNumbers(number.sid).update({
+      smsUrl: `${baseUrl}/webhooks/twilio/sms`,
+      smsMethod: "POST",
+      voiceUrl: `${baseUrl}/webhooks/twilio/voice`,
+      voiceMethod: "POST",
+      statusCallback: `${baseUrl}/webhooks/twilio/call-status`,
+      statusCallbackMethod: "POST"
+    });
+
+    // Save to business
+    await prisma.business.update({
+      where: { id: req.business.id },
+      data: { twilioPhoneNumber: number.phoneNumber }
+    });
+
+    console.log(`[twilio] Connected existing number ${number.phoneNumber} to business ${req.business.id}`);
+    res.json({ phoneNumber: number.phoneNumber });
+  })
+);
+
 // POST /api/business/reconfigure-webhooks — re-point an existing number's webhooks to this server
 router.post(
   "/reconfigure-webhooks",

@@ -140,6 +140,9 @@ function SubscriptionPanel() {
 }
 
 function TwilioPhonePanel({ currentNumber, onProvisioned }) {
+  const [tab, setTab] = useState("existing"); // "existing" | "new"
+  const [existingInput, setExistingInput] = useState("");
+  const [connecting, setConnecting] = useState(false);
   const [areaCode, setAreaCode] = useState("");
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState(null);
@@ -148,9 +151,25 @@ function TwilioPhonePanel({ currentNumber, onProvisioned }) {
   const [success, setSuccess] = useState("");
   const [error, setError] = useState("");
 
+  function clearMessages() { setError(""); setSuccess(""); }
+
+  async function connectExisting(e) {
+    e.preventDefault();
+    clearMessages();
+    if (!existingInput.trim()) { setError("Enter your Twilio phone number."); return; }
+    setConnecting(true);
+    try {
+      const data = await api("/api/business/connect-existing-number", { method: "POST", body: { phoneNumber: existingInput.trim() } });
+      onProvisioned(data.phoneNumber);
+      setExistingInput("");
+      setSuccess(`${data.phoneNumber} is connected. SMS and voice are now routed to your AI.`);
+    } catch (err) { setError(err.message); }
+    finally { setConnecting(false); }
+  }
+
   async function search(e) {
     e.preventDefault();
-    setError(""); setSuccess(""); setResults(null);
+    clearMessages(); setResults(null);
     if (!/^\d{3}$/.test(areaCode)) { setError("Enter a 3-digit area code."); return; }
     setSearching(true);
     try {
@@ -162,89 +181,120 @@ function TwilioPhonePanel({ currentNumber, onProvisioned }) {
   }
 
   async function provision(phoneNumber) {
-    setError(""); setSuccess("");
+    clearMessages();
     setProvisioning(phoneNumber);
     try {
       const data = await api("/api/business/provision-phone", { method: "POST", body: { phoneNumber } });
       onProvisioned(data.phoneNumber);
-      setResults(null);
-      setAreaCode("");
-      setSuccess(`${data.phoneNumber} is now your LeadRescue number. SMS and voice webhooks are configured automatically.`);
+      setResults(null); setAreaCode("");
+      setSuccess(`${data.phoneNumber} is your LeadRescue number. Webhooks configured automatically.`);
     } catch (err) { setError(err.message); }
     finally { setProvisioning(null); }
   }
 
   async function reconfigure() {
-    setError(""); setSuccess("");
-    setReconfiguring(true);
+    clearMessages(); setReconfiguring(true);
     try {
       await api("/api/business/reconfigure-webhooks", { method: "POST" });
-      setSuccess("Webhooks updated — your number now points to this server.");
+      setSuccess("Webhooks re-synced — your number is pointed at this server.");
     } catch (err) { setError(err.message); }
     finally { setReconfiguring(false); }
   }
 
+  const tabStyle = (active) => ({
+    padding: "0.4rem 1rem", borderRadius: 7, border: "none", cursor: "pointer", fontSize: "0.84rem", fontWeight: 600,
+    background: active ? "#2563eb" : "transparent", color: active ? "#fff" : "#6b7280", transition: "all 0.15s"
+  });
+
   return (
     <div className="panel" style={{ marginBottom: 18 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
         <Phone size={18} style={{ color: "#2563eb" }} />
-        <h2 style={{ margin: 0 }}>LeadRescue phone number</h2>
+        <h2 style={{ margin: 0 }}>Phone number</h2>
       </div>
 
-      {currentNumber ? (
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontWeight: 700, fontSize: "1.1rem", letterSpacing: "0.02em" }}>{currentNumber}</span>
-            <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#16a34a", background: "#dcfce7", border: "1px solid #bbf7d0", padding: "1px 8px", borderRadius: 99 }}>Active</span>
+      {/* Current number display */}
+      {currentNumber && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, padding: "0.75rem 1rem", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 9 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: "1rem" }}>{currentNumber}</div>
+            <div style={{ fontSize: "0.78rem", color: "#16a34a", marginTop: 2 }}>Active · calls and texts route to your AI</div>
           </div>
-          <p style={{ fontSize: "0.82rem", color: "#6b7280", margin: "6px 0 10px" }}>
-            Calls and texts to this number are handled by your AI. Webhooks automatically route to LeadRescue.
-          </p>
-          <button className="ghost small" onClick={reconfigure} disabled={reconfiguring} style={{ fontSize: "0.8rem", display: "flex", alignItems: "center", gap: 5 }}>
-            <RefreshCw size={13} /> {reconfiguring ? "Updating…" : "Re-sync webhooks"}
+          <button className="ghost small" onClick={reconfigure} disabled={reconfiguring} style={{ fontSize: "0.78rem", display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
+            <RefreshCw size={12} /> {reconfiguring ? "Syncing…" : "Re-sync webhooks"}
           </button>
         </div>
-      ) : (
-        <div style={{ marginBottom: 16, padding: "0.75rem 1rem", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 8, fontSize: "0.85rem", color: "#92400e" }}>
-          No phone number yet. Search below to get one — it will be instantly configured so calls and texts reach your AI.
-        </div>
       )}
 
-      <form onSubmit={search} style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        <input
-          value={areaCode}
-          onChange={(e) => setAreaCode(e.target.value.replace(/\D/g, "").slice(0, 3))}
-          placeholder="Area code (e.g. 317)"
-          style={{ width: 150, padding: "0.5rem 0.75rem", border: "1px solid #d1d5db", borderRadius: 8, fontSize: "0.9rem" }}
-        />
-        <button className="button" type="submit" disabled={searching} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-          <Search size={14} /> {searching ? "Searching…" : "Search numbers"}
+      {/* Tabs */}
+      <div style={{ display: "flex", gap: 4, background: "#f3f4f6", borderRadius: 9, padding: 4, marginBottom: 16 }}>
+        <button style={tabStyle(tab === "existing")} onClick={() => { setTab("existing"); clearMessages(); setResults(null); }}>
+          Use my existing number
         </button>
-      </form>
+        <button style={tabStyle(tab === "new")} onClick={() => { setTab("new"); clearMessages(); setResults(null); }}>
+          Get a new number
+        </button>
+      </div>
 
-      {results && results.length > 0 && (
-        <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, overflow: "hidden", marginBottom: 10 }}>
-          {results.map((n) => (
-            <div key={n.phoneNumber} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: "1px solid #f3f4f6" }}>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>{n.friendlyName || n.phoneNumber}</div>
-                {n.locality && <div style={{ fontSize: "0.78rem", color: "#9ca3af" }}>{n.locality}, {n.region}</div>}
-              </div>
-              <button
-                className="button"
-                onClick={() => provision(n.phoneNumber)}
-                disabled={provisioning === n.phoneNumber}
-                style={{ fontSize: "0.8rem", padding: "0.35rem 0.85rem" }}
-              >
-                {provisioning === n.phoneNumber ? "Getting…" : "Get this number"}
-              </button>
-            </div>
-          ))}
+      {tab === "existing" && (
+        <div>
+          <p style={{ fontSize: "0.84rem", color: "#374151", marginTop: 0, marginBottom: 12 }}>
+            Already have a number in your Twilio account? Enter it below and we'll connect it instantly — no purchase needed.
+          </p>
+          <form onSubmit={connectExisting} style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+            <input
+              value={existingInput}
+              onChange={(e) => setExistingInput(e.target.value)}
+              placeholder="+13175550100"
+              style={{ flex: 1, padding: "0.5rem 0.75rem", border: "1px solid #d1d5db", borderRadius: 8, fontSize: "0.9rem" }}
+            />
+            <button className="button" type="submit" disabled={connecting} style={{ whiteSpace: "nowrap" }}>
+              {connecting ? "Connecting…" : "Connect number"}
+            </button>
+          </form>
+          <div style={{ padding: "0.75rem 1rem", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, fontSize: "0.8rem", color: "#1e40af" }}>
+            <strong>Using your current business number?</strong> You can keep your existing phone number by porting it into Twilio (takes 2–7 days via Twilio support), or set up <strong>call forwarding</strong> from your current number to a LeadRescue number so missed calls still reach the AI.
+          </div>
         </div>
       )}
 
-      {error && <p style={{ color: "#ef4444", fontSize: "0.84rem", margin: "6px 0 0" }}>{error}</p>}
-      {success && <p style={{ color: "#16a34a", fontSize: "0.84rem", margin: "6px 0 0" }}>{success}</p>}
+      {tab === "new" && (
+        <div>
+          <p style={{ fontSize: "0.84rem", color: "#374151", marginTop: 0, marginBottom: 12 }}>
+            Search for an available US number by area code. It will be purchased and configured automatically.
+          </p>
+          <form onSubmit={search} style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            <input
+              value={areaCode}
+              onChange={(e) => setAreaCode(e.target.value.replace(/\D/g, "").slice(0, 3))}
+              placeholder="Area code (e.g. 317)"
+              style={{ width: 170, padding: "0.5rem 0.75rem", border: "1px solid #d1d5db", borderRadius: 8, fontSize: "0.9rem" }}
+            />
+            <button className="button" type="submit" disabled={searching} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <Search size={14} /> {searching ? "Searching…" : "Search"}
+            </button>
+          </form>
+
+          {results && results.length > 0 && (
+            <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, overflow: "hidden", marginBottom: 10 }}>
+              {results.map((n) => (
+                <div key={n.phoneNumber} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: "1px solid #f3f4f6" }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: "0.88rem" }}>{n.friendlyName || n.phoneNumber}</div>
+                    {n.locality && <div style={{ fontSize: "0.76rem", color: "#9ca3af" }}>{n.locality}, {n.region}</div>}
+                  </div>
+                  <button className="button" onClick={() => provision(n.phoneNumber)} disabled={!!provisioning} style={{ fontSize: "0.8rem", padding: "0.35rem 0.85rem" }}>
+                    {provisioning === n.phoneNumber ? "Getting…" : "Get this number"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {error && <p style={{ color: "#ef4444", fontSize: "0.84rem", margin: "8px 0 0" }}>{error}</p>}
+      {success && <p style={{ color: "#16a34a", fontSize: "0.84rem", margin: "8px 0 0" }}>{success}</p>}
     </div>
   );
 }
