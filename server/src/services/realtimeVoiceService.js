@@ -223,7 +223,7 @@ function updateRealtimeSession(openAiWs, callerMemory = "") {
           turn_detection: { type: "semantic_vad" }
         },
         output: {
-          format: { type: "audio/pcm" },
+          format: { type: "audio/pcm", rate: 24000 },
           voice
         }
       }
