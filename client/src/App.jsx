@@ -1,7 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { getToken } from "./api/client.js";
 import { Layout } from "./components/Layout.jsx";
-import Landing from "./pages/Landing.jsx";
+import Landing from "./pages/Pricing.jsx";
 import Login from "./pages/Login.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Leads from "./pages/Leads.jsx";
