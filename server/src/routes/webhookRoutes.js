@@ -171,11 +171,20 @@ router.post(
       summary: "An AI voice call started and will be attached to this lead."
     }).catch((e) => console.error("Voice notification failed:", e.message));
 
+    await prisma.message.create({
+      data: { leadId: updatedLead.id, direction: "inbound", channel: "voice", body: "[call started]" }
+    });
+    const initMessages = await prisma.message.findMany({ where: { leadId: updatedLead.id }, orderBy: { createdAt: "asc" } });
+    const aiGreeting = await runAiLeadAgent({ business, lead: updatedLead, messages: initMessages });
+    await prisma.message.create({
+      data: { leadId: updatedLead.id, direction: "outbound", channel: "voice", body: aiGreeting.nextMessageToCustomer }
+    });
+
     const gatherUrl = `/webhooks/twilio/voice-gather?leadId=${updatedLead.id}&amp;businessId=${business.id}`;
     return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Gather input="speech" action="${gatherUrl}" method="POST" speechTimeout="auto" language="en-US">
-    <Say voice="alice">Thanks for calling ${esc(business.name)}. How can I help you today?</Say>
+  <Gather input="speech" action="${gatherUrl}" method="POST" speechTimeout="3" timeout="10" language="en-US">
+    <Say voice="alice">${esc(aiGreeting.nextMessageToCustomer)}</Say>
   </Gather>
   <Say voice="alice">We didn't catch that. Please call back and we will be happy to help.</Say>
 </Response>`);
@@ -229,7 +238,7 @@ router.post(
     const aiSay = esc(aiResult.nextMessageToCustomer);
     return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Gather input="speech" action="${gatherUrl}" method="POST" speechTimeout="auto" language="en-US">
+  <Gather input="speech" action="${gatherUrl}" method="POST" speechTimeout="3" timeout="10" language="en-US">
     <Say voice="alice">${aiSay}</Say>
   </Gather>
   <Say voice="alice">${aiSay} Please call back if you need anything else.</Say>
