@@ -533,6 +533,31 @@ button.button {
   font-size: 0.85rem;
 }
 
+.user-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.user-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.user-row .muted {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+button.small {
+  padding: 4px 12px;
+  font-size: 0.82rem;
+}
+
 .availability-list {
   display: grid;
   gap: 10px;

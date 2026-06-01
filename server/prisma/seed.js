@@ -20,15 +20,18 @@ async function main() {
   }
 
   const starter = await prisma.subscriptionPlan.findUnique({ where: { name: "Starter" } });
-  const passwordHash = await bcrypt.hash("password123", 12);
 
+  // Owner account — password only set on first create, never reset on restart
+  const initialHash = await bcrypt.hash("LeadRescue1!", 12);
   const user = await prisma.user.upsert({
-    where: { email: "demo@leadrescue.local" },
-    update: { passwordHash },
+    where: { email: "owner@leadrescue.app" },
+    update: {}, // never overwrite password after first create
     create: {
-      email: "demo@leadrescue.local",
-      passwordHash,
-      name: "Jordan Carter"
+      email: "owner@leadrescue.app",
+      phoneNumber: process.env.TWILIO_PHONE_NUMBER || "+13179519758",
+      passwordHash: initialHash,
+      name: "Owner",
+      role: "owner"
     }
   });
 
