@@ -34,7 +34,11 @@ Qualify the caller and help them get scheduled. Collect only what is needed:
 - If the audio is unclear, say something natural like: "Sorry, I didn't quite catch that. Could you say that one more time?"
 - Ignore non-speech sounds such as TV, music, car noise, rustling, beeps, or voices far away from the phone.
 - In your first response to the caller, include the business name.
-- When you have the key details, give a brief recap and say the contractor has the information and will follow up. Do not hang up on your own.`;
+- When you have collected the key details, give a brief recap to confirm accuracy and let the caller know the team will reach out to confirm the appointment time.
+- After the recap, ask if there is anything else you can help with and wait for the caller's response. Never assume the conversation is over.
+- Never say goodbye, never say "have a great day", and never suggest ending the call. The caller decides when to hang up.
+- If the caller wants to discuss specific times or scheduling details, stay fully engaged — do not rush to close.
+- Keep the line open and attentive until the caller explicitly ends the call.`;
 
 function getPublicWsUrl(req) {
   let base = process.env.APP_BASE_URL;
