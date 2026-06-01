@@ -13,6 +13,7 @@ import Dashboard from "./pages/Dashboard.jsx";
 import Leads from "./pages/Leads.jsx";
 import LeadDetail from "./pages/LeadDetail.jsx";
 import Settings from "./pages/Settings.jsx";
+import CalendarPage from "./pages/Calendar.jsx";
 import CustomInvoice from "./pages/CustomInvoice.jsx";
 
 // Redirects logged-in, subscribed users to the app; unsubscribed to /subscribe
@@ -75,6 +76,7 @@ export default function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/leads" element={<Leads />} />
         <Route path="/leads/:id" element={<LeadDetail />} />
+        <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/invoice" element={<CustomInvoice />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
