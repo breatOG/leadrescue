@@ -219,7 +219,7 @@ function updateRealtimeSession(openAiWs, callerMemory = "") {
       instructions: `${DEFAULT_INSTRUCTIONS}\n\n${callerMemory}`,
       audio: {
         input: {
-          format: { type: "audio/pcmu", rate: 8000 },
+          format: { type: "audio/pcmu" },
           turn_detection: { type: "semantic_vad" }
         },
         output: {
