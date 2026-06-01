@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+
 import { api, setToken, setUser } from "../api/client.js";
 import AuthLayout from "../components/AuthLayout.jsx";
 import PhoneInput, { phoneDigits } from "../components/PhoneInput.jsx";
@@ -71,6 +72,12 @@ export default function Register() {
         <button className="auth-btn" type="submit" disabled={loading}>
           {loading ? "Creating account…" : "Create account"}
         </button>
+        <p style={{ fontSize: "0.78rem", color: "#9ca3af", textAlign: "center", margin: "8px 0 0", lineHeight: 1.5 }}>
+          By creating an account you agree to our{" "}
+          <Link to="/terms" style={{ color: "#2563eb" }}>Terms of Service</Link>
+          {" "}and{" "}
+          <Link to="/privacy" style={{ color: "#2563eb" }}>Privacy Policy</Link>.
+        </p>
       </form>
     </AuthLayout>
   );

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { getToken, getUser } from "../api/client.js";
 
 const plans = [
@@ -195,8 +195,8 @@ export default function Pricing() {
           </div>
           <p style={s.footerText}>© {new Date().getFullYear()} LeadRescue. All rights reserved.</p>
           <div style={s.footerLinks}>
-            <a href="/legal/privacy" style={s.footerLink}>Privacy</a>
-            <a href="/legal/terms" style={s.footerLink}>Terms</a>
+            <Link to="/privacy" style={s.footerLink}>Privacy</Link>
+            <Link to="/terms" style={s.footerLink}>Terms</Link>
           </div>
         </div>
       </footer>
