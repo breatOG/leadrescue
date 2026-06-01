@@ -98,6 +98,11 @@ model Business {
   ownerNotificationEmail String?
   serviceAreas           String[]               @default([])
   businessHours          Json?
+  smsStatus              String                 @default("not_started")
+  twilioMsgServiceSid    String?
+  twilioBrandSid         String?
+  twilioCampaignSid      String?
+  smsFormData            Json?
   createdAt              DateTime               @default(now())
   updatedAt              DateTime               @updatedAt
   leads                  Lead[]

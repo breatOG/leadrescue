@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { CheckCircle, Phone, RefreshCw, Search, Zap } from "lucide-react";
+import { Link } from "react-router-dom";
+import { CheckCircle, MessageSquare, Phone, RefreshCw, Search, ShieldCheck, Zap } from "lucide-react";
 import { api } from "../api/client.js";
 
 const PLAN_FEATURES = {
@@ -299,6 +300,65 @@ function TwilioPhonePanel({ currentNumber, onProvisioned }) {
   );
 }
 
+function SmsStatusPanel() {
+  const [status, setStatus] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    api("/api/sms-registration").then((d) => setStatus(d.smsStatus)).catch(() => {});
+  }, []);
+
+  async function refresh() {
+    setRefreshing(true);
+    try {
+      const d = await api("/api/sms-registration/refresh", { method: "POST" });
+      setStatus(d.smsStatus);
+    } catch {}
+    finally { setRefreshing(false); }
+  }
+
+  const cfg = {
+    not_started: { color: "#f59e0b", bg: "#fef3c7", border: "#fde68a", label: "Not set up", text: "SMS messages may be filtered by carriers until you complete A2P 10DLC verification. This is a US carrier requirement — it only takes a few minutes to submit." },
+    submitting:  { color: "#2563eb", bg: "#eff6ff", border: "#bfdbfe", label: "Submitting…", text: "Your registration is being submitted to Twilio. This may take a moment." },
+    pending:     { color: "#d97706", bg: "#fef3c7", border: "#fde68a", label: "Pending approval", text: "Your A2P 10DLC registration has been submitted. Carrier approval typically takes 1–3 business days. SMS will be fully unlocked once approved." },
+    approved:    { color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0", label: "SMS verified", text: "Your messaging registration is approved. SMS is fully unlocked — messages will not be filtered by carriers." },
+    failed:      { color: "#ef4444", bg: "#fef2f2", border: "#fecaca", label: "Verification failed", text: "There was an issue with your registration. Please re-submit with corrected information." }
+  };
+
+  const c = cfg[status] || cfg.not_started;
+
+  return (
+    <div className="panel" style={{ marginBottom: 18 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <MessageSquare size={18} style={{ color: "#2563eb" }} />
+          <h2 style={{ margin: 0 }}>SMS verification</h2>
+        </div>
+        <span style={{ fontSize: "0.75rem", fontWeight: 700, color: c.color, background: c.bg, border: `1px solid ${c.border}`, padding: "2px 10px", borderRadius: 99 }}>
+          {status === "approved" && <ShieldCheck size={11} style={{ marginRight: 4, verticalAlign: "middle" }} />}
+          {c.label}
+        </span>
+      </div>
+
+      <p style={{ fontSize: "0.84rem", color: "#374151", margin: "10px 0 14px", lineHeight: 1.55 }}>{c.text}</p>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {status !== "approved" && (
+          <Link to="/sms-setup" className="button" style={{ fontSize: "0.84rem", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <MessageSquare size={13} />
+            {status === "failed" ? "Re-submit verification" : "Set up SMS verification"}
+          </Link>
+        )}
+        {(status === "pending" || status === "approved") && (
+          <button className="ghost" onClick={refresh} disabled={refreshing} style={{ fontSize: "0.83rem" }}>
+            {refreshing ? "Checking…" : "Refresh status"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function UserManagement() {
   const [users, setUsers] = useState([]);
   const [form, setForm] = useState({ name: "", identifier: "", password: "", role: "staff" });
@@ -453,6 +513,7 @@ export default function Settings() {
         currentNumber={form.twilioPhoneNumber}
         onProvisioned={(num) => setField("twilioPhoneNumber", num)}
       />
+      <SmsStatusPanel />
       <form className="panel settings-form" onSubmit={submit}>
         <div className="form-grid">
           <label>Business name<input value={form.name || ""} onChange={(e) => setField("name", e.target.value)} /></label>

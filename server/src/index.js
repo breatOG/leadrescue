@@ -20,6 +20,7 @@ import appointmentRoutes from "./routes/appointmentRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
 import webhookRoutes from "./routes/webhookRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
+import smsRegistrationRoutes from "./routes/smsRegistrationRoutes.js";
 import { hasTwilioConfig } from "./services/twilioService.js";
 import { hasEmailConfig } from "./services/emailService.js";
 import { WebSocketServer } from "ws";
@@ -120,6 +121,7 @@ app.use("/api", appointmentRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/webhooks", webhookRoutes);
 app.use("/api/payments", paymentRoutes);
+app.use("/api/sms-registration", smsRegistrationRoutes);
 
 // Serve the React frontend in production
 const clientDist = path.join(serverDir, "..", "client", "dist");

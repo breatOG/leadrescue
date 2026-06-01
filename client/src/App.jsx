@@ -14,6 +14,7 @@ import Leads from "./pages/Leads.jsx";
 import LeadDetail from "./pages/LeadDetail.jsx";
 import Settings from "./pages/Settings.jsx";
 import CalendarPage from "./pages/Calendar.jsx";
+import SmsSetup from "./pages/SmsSetup.jsx";
 import CustomInvoice from "./pages/CustomInvoice.jsx";
 
 // Redirects logged-in, subscribed users to the app; unsubscribed to /subscribe
@@ -77,6 +78,7 @@ export default function App() {
         <Route path="/leads" element={<Leads />} />
         <Route path="/leads/:id" element={<LeadDetail />} />
         <Route path="/calendar" element={<CalendarPage />} />
+        <Route path="/sms-setup" element={<SmsSetup />} />
         <Route path="/invoice" element={<CustomInvoice />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
