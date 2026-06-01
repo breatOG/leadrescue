@@ -195,8 +195,7 @@ function updateRealtimeSession(openAiWs, callerMemory = "") {
         threshold: 0.5,
         prefix_padding_ms: 300,
         silence_duration_ms: 600,
-        create_response: true,
-        interrupt_response: false
+        create_response: true
       }
     }
   });
@@ -325,8 +324,7 @@ export function handleTwilioVoiceStream(twilioWs) {
   const model = process.env.OPENAI_REALTIME_MODEL || "gpt-4o-realtime-preview";
   const openAiWs = new WebSocket(`wss://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`, {
     headers: {
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      "OpenAI-Beta": "realtime=v1"
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
     }
   });
 
