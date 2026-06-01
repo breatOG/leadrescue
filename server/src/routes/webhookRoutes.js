@@ -1,10 +1,41 @@
 import express from "express";
 import asyncHandler from "express-async-handler";
+import crypto from "crypto";
+import OpenAI from "openai";
 import { prisma } from "../prisma/client.js";
 import { runAiLeadAgent, runVoiceAiTurn } from "../services/aiLeadAgent.js";
 import { bookAppointment, getAvailableSlots } from "../services/schedulingService.js";
 import { notifyContractor } from "../services/notificationService.js";
 import { sendSms } from "../services/twilioService.js";
+import { aiVoiceEnabled, createAiVoiceTwiML } from "../services/realtimeVoiceService.js";
+
+// In-memory TTS audio cache: id -> { buffer, createdAt }
+const ttsCache = new Map();
+setInterval(() => {
+  const cutoff = Date.now() - 5 * 60 * 1000;
+  for (const [id, entry] of ttsCache) {
+    if (entry.createdAt < cutoff) ttsCache.delete(id);
+  }
+}, 60_000).unref();
+
+async function generateTtsAudio(text) {
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const response = await openai.audio.speech.create({
+    model: "tts-1",
+    voice: "nova",
+    input: text,
+    response_format: "mp3"
+  });
+  const buffer = Buffer.from(await response.arrayBuffer());
+  const id = crypto.randomUUID();
+  ttsCache.set(id, { buffer, createdAt: Date.now() });
+  return id;
+}
+
+function ttsPlayUrl(id) {
+  const base = (process.env.APP_BASE_URL || "").replace(/\/$/, "");
+  return `${base}/webhooks/twilio/tts/${id}`;
+}
 
 function esc(str) {
   return String(str ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -167,6 +198,16 @@ router.post(
   })
 );
 
+router.get(
+  "/twilio/tts/:id",
+  asyncHandler(async (req, res) => {
+    const entry = ttsCache.get(req.params.id);
+    if (!entry) return res.status(404).send("Not found");
+    ttsCache.delete(req.params.id);
+    res.set("Content-Type", "audio/mpeg").send(entry.buffer);
+  })
+);
+
 router.post(
   "/twilio/voice",
   asyncHandler(async (req, res) => {
@@ -188,6 +229,18 @@ router.post(
     await prisma.message.create({
       data: { leadId: updatedLead.id, direction: "inbound", channel: "voice", body: "[call started]" }
     });
+
+    if (aiVoiceEnabled()) {
+      return res.type("text/xml").send(
+        createAiVoiceTwiML(req, {
+          businessName: business.name,
+          leadId: updatedLead.id,
+          businessId: business.id,
+          customerPhone: req.body.From
+        })
+      );
+    }
+
     const [initMessages, slots] = await Promise.all([
       prisma.message.findMany({ where: { leadId: updatedLead.id }, orderBy: { createdAt: "asc" } }),
       getAvailableSlots(business.id)
@@ -198,13 +251,23 @@ router.post(
     });
     await saveExtractedFields(updatedLead.id, extracted);
 
+    const [ttsId, timeoutTtsId] = await Promise.all([
+      generateTtsAudio(greeting).catch(() => null),
+      generateTtsAudio("Sorry, I didn't catch that. Please call us back and we will be happy to help.").catch(() => null)
+    ]);
     const gatherUrl = `/webhooks/twilio/voice-gather?leadId=${updatedLead.id}&amp;businessId=${business.id}`;
+    const greetingXml = ttsId
+      ? `<Play>${esc(ttsPlayUrl(ttsId))}</Play>`
+      : `<Say voice="Google.en-US-Neural2-F">${esc(greeting)}</Say>`;
+    const timeoutXml = timeoutTtsId
+      ? `<Play>${esc(ttsPlayUrl(timeoutTtsId))}</Play>`
+      : `<Say voice="Google.en-US-Neural2-F">Sorry, I didn't catch that. Please call us back and we will be happy to help.</Say>`;
     return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Gather input="speech" action="${gatherUrl}" method="POST" speechTimeout="1" timeout="10" language="en-US">
-    <Say voice="Google.en-US-Neural2-F">${esc(greeting)}</Say>
+  <Gather input="speech" action="${gatherUrl}" method="POST" speechTimeout="auto" timeout="10" language="en-US" enhanced="true">
+    ${greetingXml}
   </Gather>
-  <Say voice="Google.en-US-Neural2-F">Sorry, I didn't catch that. Please call us back and we will be happy to help.</Say>
+  ${timeoutXml}
 </Response>`);
   })
 );
@@ -221,7 +284,12 @@ router.post(
     ]);
 
     if (!lead || !business) {
-      return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="Google.en-US-Neural2-F">Sorry about that — something went wrong on our end. Please give us a call back and we'll get you sorted out.</Say></Response>`);
+      const errMsg = "Sorry about that — something went wrong on our end. Please give us a call back and we'll get you sorted out.";
+      const errTtsId = await generateTtsAudio(errMsg).catch(() => null);
+      const errXml = errTtsId
+        ? `<Play>${esc(ttsPlayUrl(errTtsId))}</Play>`
+        : `<Say voice="Google.en-US-Neural2-F">${esc(errMsg)}</Say>`;
+      return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?><Response>${errXml}</Response>`);
     }
 
     if (speechResult) {
@@ -239,11 +307,16 @@ router.post(
       ({ text: aiReply, done, extracted } = await runVoiceAiTurn({ business, lead, messages, slots }));
     } catch (err) {
       console.error("[voice-gather] AI error:", err.message);
+      const retryMsg = "Sorry, I didn't quite catch that — could you say that again?";
+      const retryTtsId = await generateTtsAudio(retryMsg).catch(() => null);
+      const retryXml = retryTtsId
+        ? `<Play>${esc(ttsPlayUrl(retryTtsId))}</Play>`
+        : `<Say voice="Google.en-US-Neural2-F">${esc(retryMsg)}</Say>`;
       const gatherUrl = `/webhooks/twilio/voice-gather?leadId=${lead.id}&amp;businessId=${business.id}`;
       return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Gather input="speech" action="${gatherUrl}" method="POST" speechTimeout="1" timeout="10" language="en-US">
-    <Say voice="Google.en-US-Neural2-F">Sorry, I didn't quite catch that — could you say that again?</Say>
+  <Gather input="speech" action="${gatherUrl}" method="POST" speechTimeout="auto" timeout="10" language="en-US" enhanced="true">
+    ${retryXml}
   </Gather>
 </Response>`);
     }
@@ -271,20 +344,34 @@ router.post(
         console.error("[voice-gather] Summary error:", err.message);
         await prisma.lead.update({ where: { id: lead.id }, data: { status: "qualified" } });
       }
+      const doneTtsId = await generateTtsAudio(aiReply).catch(() => null);
+      const doneXml = doneTtsId
+        ? `<Play>${esc(ttsPlayUrl(doneTtsId))}</Play>`
+        : `<Say voice="Google.en-US-Neural2-F">${esc(aiReply)}</Say>`;
       return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Google.en-US-Neural2-F">${esc(aiReply)}</Say>
+  ${doneXml}
   <Hangup/>
 </Response>`);
     }
 
+    const [replyTtsId, noInputTtsId] = await Promise.all([
+      generateTtsAudio(aiReply).catch(() => null),
+      generateTtsAudio("Sorry, I didn't catch that. Feel free to call us back anytime.").catch(() => null)
+    ]);
+    const replyXml = replyTtsId
+      ? `<Play>${esc(ttsPlayUrl(replyTtsId))}</Play>`
+      : `<Say voice="Google.en-US-Neural2-F">${esc(aiReply)}</Say>`;
+    const noInputXml = noInputTtsId
+      ? `<Play>${esc(ttsPlayUrl(noInputTtsId))}</Play>`
+      : `<Say voice="Google.en-US-Neural2-F">Sorry, I didn't catch that. Feel free to call us back anytime.</Say>`;
     const gatherUrl = `/webhooks/twilio/voice-gather?leadId=${lead.id}&amp;businessId=${business.id}`;
     return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Gather input="speech" action="${gatherUrl}" method="POST" speechTimeout="1" timeout="10" language="en-US" enhanced="true">
-    <Say voice="Google.en-US-Neural2-F">${esc(aiReply)}</Say>
+  <Gather input="speech" action="${gatherUrl}" method="POST" speechTimeout="auto" timeout="10" language="en-US" enhanced="true">
+    ${replyXml}
   </Gather>
-  <Say voice="Google.en-US-Neural2-F">Sorry, I didn't catch that. Feel free to call us back anytime.</Say>
+  ${noInputXml}
 </Response>`);
   })
 );

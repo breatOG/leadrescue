@@ -20,6 +20,8 @@ import appointmentRoutes from "./routes/appointmentRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
 import webhookRoutes from "./routes/webhookRoutes.js";
 import { hasTwilioConfig } from "./services/twilioService.js";
+import { WebSocketServer } from "ws";
+import { handleTwilioVoiceStream, aiVoiceEnabled } from "./services/realtimeVoiceService.js";
 
 if (!process.env.JWT_SECRET) {
   process.env.JWT_SECRET = "local-dev-only-secret";
@@ -146,3 +148,16 @@ app.use((error, req, res, next) => {
 server.listen(port, () => {
   console.log(`LeadRescue API running on http://localhost:${port}`);
 });
+
+if (aiVoiceEnabled()) {
+  const wss = new WebSocketServer({ noServer: true });
+  wss.on("connection", handleTwilioVoiceStream);
+  server.on("upgrade", (req, socket, head) => {
+    if (req.url === "/webhooks/twilio/voice-stream") {
+      wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));
+    } else {
+      socket.destroy();
+    }
+  });
+  console.log("[voice-ai] WebSocket listener active at /webhooks/twilio/voice-stream");
+}
