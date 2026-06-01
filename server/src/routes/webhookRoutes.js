@@ -175,7 +175,7 @@ router.post(
       data: { leadId: updatedLead.id, direction: "inbound", channel: "voice", body: "[call started]" }
     });
     const initMessages = await prisma.message.findMany({ where: { leadId: updatedLead.id }, orderBy: { createdAt: "asc" } });
-    const greeting = await runVoiceAiTurn({ business, lead: updatedLead, messages: initMessages });
+    const { text: greeting } = await runVoiceAiTurn({ business, lead: updatedLead, messages: initMessages });
     await prisma.message.create({
       data: { leadId: updatedLead.id, direction: "outbound", channel: "voice", body: greeting }
     });
@@ -184,9 +184,9 @@ router.post(
     return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Gather input="speech" action="${gatherUrl}" method="POST" speechTimeout="1" timeout="10" language="en-US">
-    <Say voice="Polly.Joanna-Neural">${esc(greeting)}</Say>
+    <Say voice="Google.en-US-Neural2-F">${esc(greeting)}</Say>
   </Gather>
-  <Say voice="Polly.Joanna-Neural">Sorry, I didn't catch that. Please call us back and we will be happy to help.</Say>
+  <Say voice="Google.en-US-Neural2-F">Sorry, I didn't catch that. Please call us back and we will be happy to help.</Say>
 </Response>`);
   })
 );
@@ -213,7 +213,7 @@ router.post(
     }
 
     const messages = await prisma.message.findMany({ where: { leadId: lead.id }, orderBy: { createdAt: "asc" } });
-    const aiReply = await runVoiceAiTurn({ business, lead, messages });
+    const { text: aiReply, done } = await runVoiceAiTurn({ business, lead, messages });
 
     await prisma.message.create({
       data: { leadId: lead.id, direction: "outbound", channel: "voice", body: aiReply }
@@ -223,14 +223,21 @@ router.post(
       data: { lastMessage: aiReply }
     });
 
+    if (done) {
+      return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Google.en-US-Neural2-F">${esc(aiReply)}</Say>
+  <Hangup/>
+</Response>`);
+    }
+
     const gatherUrl = `/webhooks/twilio/voice-gather?leadId=${lead.id}&amp;businessId=${business.id}`;
-    const aiSay = esc(aiReply);
     return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Gather input="speech" action="${gatherUrl}" method="POST" speechTimeout="1" timeout="10" language="en-US">
-    <Say voice="Polly.Joanna-Neural">${aiSay}</Say>
+    <Say voice="Google.en-US-Neural2-F">${esc(aiReply)}</Say>
   </Gather>
-  <Say voice="Polly.Joanna-Neural">Sorry, I didn't catch that. Please call us back and we will be happy to help.</Say>
+  <Say voice="Google.en-US-Neural2-F">Sorry, I didn't catch that. Feel free to call us back anytime.</Say>
 </Response>`);
   })
 );
