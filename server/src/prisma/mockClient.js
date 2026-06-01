@@ -218,11 +218,22 @@ export const mockPrisma = {
   },
   user: {
     findUnique: async ({ where, include }) => includeUser(db.users.find((item) => matches(item, where)) || null, include),
+    findFirst: async ({ where = {}, include } = {}) => includeUser(db.users.find((item) => matches(item, where)) || null, include),
+    findMany: async ({ orderBy } = {}) => sortRecords(db.users, orderBy).map((u) => includeUser(u, null)),
     create: async ({ data, include }) => {
-      const created = { id: id("user"), email: data.email, passwordHash: data.passwordHash, name: data.name || null, createdAt: now(), updatedAt: now() };
+      const created = { id: id("user"), email: data.email, phoneNumber: data.phoneNumber || null, passwordHash: data.passwordHash, name: data.name || null, role: data.role || "owner", createdAt: now(), updatedAt: now() };
       db.users.push(created);
       if (data.business?.create) createBusiness(data.business.create, created.id);
       return includeUser(created, include);
+    },
+    update: async ({ where, data }) => {
+      const record = db.users.find((item) => matches(item, where));
+      if (record) Object.assign(record, data, { updatedAt: now() });
+      return record;
+    },
+    delete: async ({ where }) => {
+      const index = db.users.findIndex((item) => matches(item, where));
+      if (index !== -1) db.users.splice(index, 1);
     },
     upsert: async ({ where, update, create }) => {
       const existing = db.users.find((item) => matches(item, where));
