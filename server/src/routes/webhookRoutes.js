@@ -171,7 +171,7 @@ router.post(
       summary: "An AI voice call started and will be attached to this lead."
     }).catch((e) => console.error("Voice notification failed:", e.message));
 
-    const gatherUrl = `/webhooks/twilio/voice-gather?leadId=${updatedLead.id}&businessId=${business.id}`;
+    const gatherUrl = `/webhooks/twilio/voice-gather?leadId=${updatedLead.id}&amp;businessId=${business.id}`;
     return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Gather input="speech" action="${gatherUrl}" method="POST" speechTimeout="auto" language="en-US">
@@ -225,7 +225,7 @@ router.post(
       await notifyContractor({ business, lead: updatedLead, summary: aiResult.contractorSummary });
     }
 
-    const gatherUrl = `/webhooks/twilio/voice-gather?leadId=${lead.id}&businessId=${business.id}`;
+    const gatherUrl = `/webhooks/twilio/voice-gather?leadId=${lead.id}&amp;businessId=${business.id}`;
     const aiSay = esc(aiResult.nextMessageToCustomer);
     return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
