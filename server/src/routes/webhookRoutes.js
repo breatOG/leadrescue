@@ -221,7 +221,7 @@ router.post(
     ]);
 
     if (!lead || !business) {
-      return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?><Response><Say>Sorry, there was an error. Please call back.</Say></Response>`);
+      return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="Google.en-US-Neural2-F">Sorry about that — something went wrong on our end. Please give us a call back and we'll get you sorted out.</Say></Response>`);
     }
 
     if (speechResult) {
@@ -230,11 +230,23 @@ router.post(
       });
     }
 
-    const [messages, slots] = await Promise.all([
-      prisma.message.findMany({ where: { leadId: lead.id }, orderBy: { createdAt: "asc" } }),
-      getAvailableSlots(business.id)
-    ]);
-    const { text: aiReply, done, extracted } = await runVoiceAiTurn({ business, lead, messages, slots });
+    let aiReply, done, extracted;
+    try {
+      const [messages, slots] = await Promise.all([
+        prisma.message.findMany({ where: { leadId: lead.id }, orderBy: { createdAt: "asc" } }),
+        getAvailableSlots(business.id)
+      ]);
+      ({ text: aiReply, done, extracted } = await runVoiceAiTurn({ business, lead, messages, slots }));
+    } catch (err) {
+      console.error("[voice-gather] AI error:", err.message);
+      const gatherUrl = `/webhooks/twilio/voice-gather?leadId=${lead.id}&amp;businessId=${business.id}`;
+      return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Gather input="speech" action="${gatherUrl}" method="POST" speechTimeout="1" timeout="10" language="en-US">
+    <Say voice="Google.en-US-Neural2-F">Sorry, I didn't quite catch that — could you say that again?</Say>
+  </Gather>
+</Response>`);
+    }
 
     await prisma.message.create({
       data: { leadId: lead.id, direction: "outbound", channel: "voice", body: aiReply }
@@ -243,19 +255,22 @@ router.post(
     await prisma.lead.update({ where: { id: lead.id }, data: { lastMessage: aiReply } });
 
     if (done) {
-      const finalMessages = await prisma.message.findMany({ where: { leadId: lead.id }, orderBy: { createdAt: "asc" } });
-      const finalLead = await prisma.lead.findUnique({ where: { id: lead.id } });
-      const summary = await runAiLeadAgent({ business, lead: finalLead, messages: finalMessages });
-      await prisma.lead.update({
-        where: { id: lead.id },
-        data: {
-          status: "qualified",
-          priority: summary.leadPriority,
-          aiSummary: summary.contractorSummary,
-          ...summary.extractedFields
-        }
-      });
-      await notifyContractor({ business, lead: { ...finalLead, status: "qualified" }, summary: summary.contractorSummary });
+      try {
+        const [finalMessages, finalLead] = await Promise.all([
+          prisma.message.findMany({ where: { leadId: lead.id }, orderBy: { createdAt: "asc" } }),
+          prisma.lead.findUnique({ where: { id: lead.id } })
+        ]);
+        const summary = await runAiLeadAgent({ business, lead: finalLead, messages: finalMessages });
+        await prisma.lead.update({
+          where: { id: lead.id },
+          data: { status: "qualified", priority: summary.leadPriority, aiSummary: summary.contractorSummary, ...summary.extractedFields }
+        });
+        notifyContractor({ business, lead: { ...finalLead, status: "qualified" }, summary: summary.contractorSummary })
+          .catch((e) => console.error("Notify failed:", e.message));
+      } catch (err) {
+        console.error("[voice-gather] Summary error:", err.message);
+        await prisma.lead.update({ where: { id: lead.id }, data: { status: "qualified" } });
+      }
       return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="Google.en-US-Neural2-F">${esc(aiReply)}</Say>
@@ -266,7 +281,7 @@ router.post(
     const gatherUrl = `/webhooks/twilio/voice-gather?leadId=${lead.id}&amp;businessId=${business.id}`;
     return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Gather input="speech" action="${gatherUrl}" method="POST" speechTimeout="1" timeout="10" language="en-US">
+  <Gather input="speech" action="${gatherUrl}" method="POST" speechTimeout="1" timeout="10" language="en-US" enhanced="true">
     <Say voice="Google.en-US-Neural2-F">${esc(aiReply)}</Say>
   </Gather>
   <Say voice="Google.en-US-Neural2-F">Sorry, I didn't catch that. Feel free to call us back anytime.</Say>
