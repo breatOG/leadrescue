@@ -54,6 +54,7 @@ model User {
   subscriptionPlan     String?
   staffBusinessId      String?
   staffBusiness        Business?   @relation("staffMembers", fields: [staffBusinessId], references: [id])
+  permissions          String[]    @default([])
   business             Business?
   authTokens           AuthToken[]
   createdAt            DateTime    @default(now())

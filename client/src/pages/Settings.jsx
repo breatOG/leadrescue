@@ -359,6 +359,101 @@ function SmsStatusPanel() {
   );
 }
 
+const PERMS = [
+  { key: "leads:view",    label: "View leads",       desc: "See the leads list and conversation details" },
+  { key: "leads:message", label: "Send messages",    desc: "Send manual SMS messages to leads" },
+  { key: "calendar:view", label: "View calendar",    desc: "See appointments and availability schedule" },
+  { key: "settings:view", label: "View settings",    desc: "View business settings (not billing or team)" },
+];
+
+function MemberRow({ user: u, onRemove, onPermissionsChange }) {
+  const [expanded, setExpanded] = useState(false);
+  const [perms, setPerms] = useState(u.permissions || []);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const isOwner = u.role === "owner";
+
+  function toggle(key) {
+    setPerms((p) => p.includes(key) ? p.filter((k) => k !== key) : [...p, key]);
+    setSaved(false);
+  }
+
+  async function save() {
+    setSaving(true);
+    try {
+      await api(`/api/auth/users/${u.id}/permissions`, { method: "PATCH", body: { permissions: perms } });
+      onPermissionsChange(u.id, perms);
+      setSaved(true);
+    } catch {}
+    finally { setSaving(false); }
+  }
+
+  const avatar = (u.name || u.email || "?")[0].toUpperCase();
+
+  return (
+    <div style={{ border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden", marginBottom: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", background: "#fff" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 36, height: 36, borderRadius: "50%", background: isOwner ? "linear-gradient(135deg,#0f766e,#115e59)" : "#e2e8f0", display: "flex", alignItems: "center", justifyContent: "center", color: isOwner ? "#fff" : "#475569", fontWeight: 800, fontSize: "0.85rem", flexShrink: 0 }}>
+            {avatar}
+          </div>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: "0.9rem" }}>{u.name || "Unnamed"}</div>
+            <div style={{ fontSize: "0.76rem", color: "var(--muted)" }}>{u.email} · <span style={{ textTransform: "capitalize", fontWeight: 600, color: isOwner ? "#0f766e" : "#475569" }}>{u.role}</span></div>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {!isOwner && (
+            <>
+              <button
+                className="ghost small"
+                onClick={() => setExpanded((e) => !e)}
+                style={{ fontSize: "0.78rem", color: "var(--accent)", borderColor: "var(--accent)" }}
+              >
+                {expanded ? "Hide permissions" : "Edit permissions"}
+              </button>
+              <button
+                className="ghost small"
+                onClick={() => onRemove(u.id)}
+                style={{ fontSize: "0.78rem", color: "#ef4444", borderColor: "#fecaca" }}
+              >
+                Remove
+              </button>
+            </>
+          )}
+          {isOwner && <span style={{ fontSize: "0.75rem", color: "#0f766e", fontWeight: 700, background: "#f0fdf4", border: "1px solid #bbf7d0", padding: "2px 10px", borderRadius: 99 }}>Owner · Full access</span>}
+        </div>
+      </div>
+
+      {expanded && !isOwner && (
+        <div style={{ padding: "14px 16px", background: "#f9fafb", borderTop: "1px solid var(--line)" }}>
+          <p style={{ margin: "0 0 12px", fontSize: "0.8rem", color: "var(--muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>Permissions</p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
+            {PERMS.map(({ key, label, desc }) => {
+              const on = perms.includes(key);
+              return (
+                <label key={key} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", border: `1px solid ${on ? "#0f766e" : "var(--line)"}`, borderRadius: 8, background: on ? "#f0fdf4" : "#fff", cursor: "pointer", transition: "all 0.15s" }}>
+                  <input type="checkbox" checked={on} onChange={() => toggle(key)} style={{ marginTop: 2, accentColor: "#0f766e", width: 15, height: 15, flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: "0.83rem", color: on ? "#0f766e" : "#374151" }}>{label}</div>
+                    <div style={{ fontSize: "0.74rem", color: "#94a3b8", marginTop: 1 }}>{desc}</div>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <button className="button" onClick={save} disabled={saving} style={{ fontSize: "0.82rem", minHeight: 34, padding: "0 14px" }}>
+              {saving ? "Saving…" : "Save permissions"}
+            </button>
+            {saved && <span style={{ fontSize: "0.8rem", color: "#16a34a", fontWeight: 600 }}>Saved ✓</span>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function UserManagement() {
   const [users, setUsers] = useState([]);
   const [invitations, setInvitations] = useState([]);
@@ -398,9 +493,13 @@ function UserManagement() {
   }
 
   async function removeUser(id) {
-    if (!confirm("Remove this team member?")) return;
+    if (!confirm("Remove this team member? They'll lose access immediately.")) return;
     await api(`/api/auth/users/${id}`, { method: "DELETE" });
     await load();
+  }
+
+  function updatePermissions(id, perms) {
+    setUsers((prev) => prev.map((u) => u.id === id ? { ...u, permissions: perms } : u));
   }
 
   async function changePassword(e) {
@@ -415,22 +514,12 @@ function UserManagement() {
   return (
     <>
       <h2>Team members</h2>
-      <div className="user-list">
-        {users.map((u) => (
-          <div className="user-row" key={u.id}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 34, height: 34, borderRadius: "50%", background: "linear-gradient(135deg, #0f766e, #115e59)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800, fontSize: "0.82rem", flexShrink: 0 }}>
-                {(u.name || u.email || "?")[0].toUpperCase()}
-              </div>
-              <div>
-                <strong>{u.name || "Unnamed"}</strong>
-                <div className="muted" style={{ fontSize: "0.8rem" }}>{u.email} · <span style={{ textTransform: "capitalize" }}>{u.role}</span></div>
-              </div>
-            </div>
-            <button className="ghost small" onClick={() => removeUser(u.id)} style={{ fontSize: "0.8rem" }}>Remove</button>
-          </div>
-        ))}
-      </div>
+      {users.length === 0
+        ? <p style={{ color: "var(--muted)", fontSize: "0.87rem" }}>No team members yet. Invite someone below.</p>
+        : users.map((u) => (
+            <MemberRow key={u.id} user={u} onRemove={removeUser} onPermissionsChange={updatePermissions} />
+          ))
+      }
 
       {invitations.length > 0 && (
         <>
@@ -451,7 +540,7 @@ function UserManagement() {
 
       <h3 style={{ marginTop: 22 }}>Invite a team member</h3>
       <p style={{ fontSize: "0.84rem", color: "#64748b", marginTop: 0, marginBottom: 14 }}>
-        They'll receive an email with a link to create their account and access your dashboard.
+        They'll get an email with a link to create their account. New members get view access to leads and calendar by default — you can adjust their permissions above.
       </p>
       <form className="settings-form" onSubmit={sendInvite}>
         <div className="form-grid">

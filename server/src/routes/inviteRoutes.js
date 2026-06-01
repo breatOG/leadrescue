@@ -154,7 +154,8 @@ router.post(
         passwordHash,
         role: "staff",
         emailVerified: true,
-        staffBusinessId: invite.businessId
+        staffBusinessId: invite.businessId,
+        permissions: ["leads:view", "leads:message", "calendar:view"]
       }
     });
 

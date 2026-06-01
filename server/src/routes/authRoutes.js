@@ -330,6 +330,28 @@ router.delete(
   })
 );
 
+// Update a team member's permissions (owner only)
+router.patch(
+  "/users/:id/permissions",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    if (req.user.role !== "owner") return res.status(403).json({ error: "Owner access required." });
+    if (req.params.id === req.user.id) return res.status(400).json({ error: "Cannot change your own permissions." });
+
+    const { permissions } = req.body;
+    if (!Array.isArray(permissions)) return res.status(400).json({ error: "permissions must be an array." });
+
+    const VALID = ["leads:view", "leads:message", "calendar:view", "settings:view"];
+    const cleaned = permissions.filter((p) => VALID.includes(p));
+
+    const user = await prisma.user.update({
+      where: { id: req.params.id },
+      data: { permissions: cleaned }
+    });
+    res.json({ user: publicUser(user) });
+  })
+);
+
 // Change own password
 router.patch(
   "/password",
