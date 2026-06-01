@@ -38,9 +38,11 @@ router.get(
 router.patch(
   "/:id",
   asyncHandler(async (req, res) => {
+    // Whitelist updatable fields so clients can't mutate businessId or other sensitive columns
+    const { status, priority, customerName, jobType, issueDescription, address, zipCode, urgency, manualNotes } = req.body;
     const lead = await prisma.lead.update({
-      where: { id: req.params.id },
-      data: req.body
+      where: { id: req.params.id, businessId: req.business.id },
+      data: { status, priority, customerName, jobType, issueDescription, address, zipCode, urgency, manualNotes }
     });
     res.json({ lead });
   })

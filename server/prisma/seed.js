@@ -37,18 +37,20 @@ async function main() {
     }
   });
 
-  const twilioPhone = process.env.TWILIO_PHONE_NUMBER || "+13179519758";
+  // Only use a Twilio number if one is explicitly set via env — never fall back to a hardcoded number
+  const twilioPhone = process.env.TWILIO_PHONE_NUMBER || null;
 
-  // Ensure only the owner's business owns the Twilio number
-  await prisma.business.updateMany({
-    where: { twilioPhoneNumber: twilioPhone, ownerId: { not: user.id } },
-    data: { twilioPhoneNumber: null }
-  });
+  if (twilioPhone) {
+    // Ensure only the owner's business owns the Twilio number
+    await prisma.business.updateMany({
+      where: { twilioPhoneNumber: twilioPhone, ownerId: { not: user.id } },
+      data: { twilioPhoneNumber: null }
+    });
+  }
 
-  // Always keep the owner's business phone number up to date
   await prisma.business.upsert({
     where: { ownerId: user.id },
-    update: { twilioPhoneNumber: twilioPhone },
+    update: twilioPhone ? { twilioPhoneNumber: twilioPhone } : {},
     create: {
       ownerId: user.id,
       subscriptionPlanId: (await prisma.subscriptionPlan.findUnique({ where: { name: "Starter" } }))?.id,
@@ -90,8 +92,8 @@ async function main() {
     });
   }
 
-  console.log("LeadRescue setup complete.");
-  console.log(`Login: ${process.env.TWILIO_PHONE_NUMBER || "+13179519758"} / LeadRescue1!`);
+  console.log("LeadRescue seed complete.");
+  console.log("Demo login: owner@leadrescue.app / LeadRescue1! (change this password immediately in production)");
 }
 
 main()

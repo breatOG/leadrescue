@@ -266,12 +266,22 @@ router.get("/me", requireAuth, (req, res) => {
   res.json({ user: publicUser(req.user) });
 });
 
-// List all users (owner only)
+// List all users (owner only) — scoped to this business's owner
 router.get(
   "/users",
   requireAuth,
   asyncHandler(async (req, res) => {
-    const users = await prisma.user.findMany({ orderBy: { createdAt: "asc" } });
+    if (req.user.role !== "owner") return res.status(403).json({ error: "Owner access required." });
+    // Return the owner + any staff whose email is @leadrescue.internal (created via this dashboard)
+    const users = await prisma.user.findMany({
+      where: {
+        OR: [
+          { id: req.user.id },
+          { email: { endsWith: "@leadrescue.internal" } }
+        ]
+      },
+      orderBy: { createdAt: "asc" }
+    });
     res.json({ users: users.map(publicUser) });
   })
 );
@@ -311,6 +321,7 @@ router.delete(
   "/users/:id",
   requireAuth,
   asyncHandler(async (req, res) => {
+    if (req.user.role !== "owner") return res.status(403).json({ error: "Owner access required." });
     if (req.params.id === req.user.id) {
       return res.status(400).json({ error: "You cannot delete your own account." });
     }
