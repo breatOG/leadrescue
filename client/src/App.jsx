@@ -46,7 +46,7 @@ function ProtectedRoute() {
       .then((data) => {
         setUser(data.user);
         if (data.user.subscriptionStatus !== "active") {
-          navigate("/subscribe", { replace: true });
+          navigate("/", { replace: true });
         } else {
           setReady(true);
         }

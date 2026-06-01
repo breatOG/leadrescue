@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { getToken } from "../api/client.js";
+import { getToken, getUser } from "../api/client.js";
 
 const plans = [
   {
@@ -48,12 +48,18 @@ export default function Pricing() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (getToken()) navigate("/dashboard", { replace: true });
+    const user = getUser();
+    if (getToken() && user?.subscriptionStatus === "active") {
+      navigate("/dashboard", { replace: true });
+    }
   }, []);
 
   function handleCta(plan) {
     if (plan.name === "Scale") {
       window.location.href = "mailto:hello@leadrescue.com?subject=Scale Plan Inquiry";
+    } else if (getToken()) {
+      // Already logged in but no active sub — go straight to checkout
+      navigate(`/subscribe?plan=${plan.name.toLowerCase()}`);
     } else {
       navigate(`/register?plan=${plan.name.toLowerCase()}`);
     }
