@@ -1,9 +1,13 @@
 import "dotenv/config";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 
 // Prefer public URL so Railway's internal DNS issues don't block startup
 if (process.env.DATABASE_PUBLIC_URL) {
   process.env.DATABASE_URL = process.env.DATABASE_PUBLIC_URL;
 }
+
+const serverDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 import http from "node:http";
 import express from "express";
