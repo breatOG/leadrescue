@@ -83,6 +83,29 @@ export async function sendVerificationEmail({ to, name, link }) {
   });
 }
 
+export async function sendRenewalReminderEmail({ to, name, renewalDate, plan, amountCents }) {
+  const greeting = name ? `Hi ${name},` : "Hi,";
+  const planLabel = { starter: "Starter", pro: "Pro", scale: "Scale" }[plan] || (plan || "your");
+  const date = new Date(renewalDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  const amount = amountCents ? `$${(amountCents / 100).toFixed(2)}` : "your subscription amount";
+  const baseUrl = (process.env.APP_BASE_URL || "https://leadrescue.com").replace(/\/$/, "");
+
+  return deliver({
+    to,
+    subject: `Your LeadRescue ${planLabel} plan renews on ${date}`,
+    logLine: `Renewal reminder: ${planLabel} plan renews on ${date} for ${amount}`,
+    text: `${greeting}\n\nYour LeadRescue ${planLabel} plan will automatically renew on ${date} for ${amount}.\n\nTo upgrade, downgrade, or cancel, visit your billing settings at ${baseUrl}/settings.\n\nThank you for using LeadRescue!`,
+    html: layout(
+      `Your ${planLabel} plan renews on ${date}`,
+      `<p>${greeting}</p>
+       <p>Your LeadRescue <strong>${planLabel} plan</strong> will automatically renew on <strong>${date}</strong> for <strong>${amount}</strong>.</p>
+       <p>If you'd like to change or cancel your subscription before then, you can do it from your billing settings.</p>
+       <p><a href="${baseUrl}/settings" style="display:inline-block; background:#2563eb; color:#fff; padding:10px 18px; border-radius:8px; text-decoration:none;">Manage billing</a></p>
+       <p style="color:#6b7280; font-size:13px;">If you don't do anything, your subscription will renew automatically — no action needed.</p>`
+    )
+  });
+}
+
 export async function sendPasswordResetEmail({ to, name, link }) {
   const greeting = name ? `Hi ${name},` : "Hi,";
   return deliver({

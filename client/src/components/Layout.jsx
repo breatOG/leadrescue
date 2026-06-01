@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
-import { CalendarDays, LayoutDashboard, LogOut, Mail, Receipt, Settings, Table2, X } from "lucide-react";
+import { CalendarDays, LayoutDashboard, LogOut, Mail, Settings, Table2, X } from "lucide-react";
 import { api, getUser, setToken, setUser } from "../api/client.js";
 
 function VerifyEmailBanner() {
@@ -63,7 +63,6 @@ export function Layout() {
         <nav>
           <NavLink to="/dashboard"><LayoutDashboard size={18} /> Dashboard</NavLink>
           <NavLink to="/leads"><Table2 size={18} /> Leads</NavLink>
-          <NavLink to="/invoice"><Receipt size={18} /> Invoice</NavLink>
           <NavLink to="/settings"><Settings size={18} /> Settings</NavLink>
         </nav>
         <button className="ghost full" onClick={logout}><LogOut size={18} /> Logout</button>

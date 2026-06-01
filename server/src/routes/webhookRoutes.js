@@ -8,6 +8,7 @@ import { bookAppointment, getAvailableSlots } from "../services/schedulingServic
 import { notifyContractor } from "../services/notificationService.js";
 import { sendSms } from "../services/twilioService.js";
 import { aiVoiceEnabled, createAiVoiceTwiML } from "../services/realtimeVoiceService.js";
+import { PLAN_LIMITS } from "./paymentRoutes.js";
 
 // In-memory TTS audio cache: id -> { buffer, createdAt }
 const ttsCache = new Map();
@@ -85,6 +86,24 @@ async function findOrCreateLead({ business, from, source }) {
 
   if (existing) return existing;
 
+  // Check monthly lead limit based on owner's subscription plan
+  const owner = await prisma.user.findUnique({ where: { id: business.ownerId } });
+  const plan = (owner?.subscriptionPlan || "starter").toLowerCase();
+  const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.starter;
+
+  if (limits.leadsPerMonth !== Infinity) {
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+    const leadsThisMonth = await prisma.lead.count({
+      where: { businessId: business.id, createdAt: { gte: startOfMonth } }
+    });
+    if (leadsThisMonth >= limits.leadsPerMonth) {
+      console.log(`[lead] Monthly limit reached (${leadsThisMonth}/${limits.leadsPerMonth}) for business ${business.id} on plan ${plan}`);
+      return null;
+    }
+  }
+
   return prisma.lead.create({
     data: {
       businessId: business.id,
@@ -149,8 +168,22 @@ router.post(
     await saveWebhook({ businessId: business.id, eventType: "sms", payload: req.body });
 
     let lead = await findOrCreateLead({ business, from: req.body.From, source: "sms" });
-    const inboundBody = String(req.body.Body || "").trim();
     const fromPhone = business.twilioPhoneNumber || process.env.TWILIO_PHONE_NUMBER;
+
+    if (!lead) {
+      try {
+        await sendSms({
+          to: req.body.From,
+          from: fromPhone,
+          body: `Thanks for reaching out to ${business.name}! We're currently at capacity for new inquiries this month. Please call us directly or reach out again next month.`
+        });
+      } catch (err) {
+        console.error("[sms] Failed to send capacity reply:", err.message);
+      }
+      return res.type("text/xml").send("<Response></Response>");
+    }
+
+    const inboundBody = String(req.body.Body || "").trim();
 
     await prisma.message.create({
       data: { leadId: lead.id, direction: "inbound", channel: "sms", body: inboundBody, twilioSid: req.body.MessageSid }
@@ -234,6 +267,16 @@ router.post(
     await saveWebhook({ businessId: business.id, eventType: "voice", payload: req.body });
 
     const lead = await findOrCreateLead({ business, from: req.body.From, source: "missed_call" });
+
+    if (!lead) {
+      const capMsg = `Thank you for calling ${business.name}. We're currently at capacity for new inquiries this month. Please try calling back next month or visit our website for more information. Thank you!`;
+      return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Google.en-US-Neural2-F">${esc(capMsg)}</Say>
+  <Hangup/>
+</Response>`);
+    }
+
     const updatedLead = await prisma.lead.update({
       where: { id: lead.id },
       data: { status: lead.status === "new" ? "texting" : lead.status, lastMessage: "AI voice call started" }

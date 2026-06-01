@@ -3,10 +3,17 @@ import Stripe from "stripe";
 import asyncHandler from "express-async-handler";
 import { requireAuth } from "../middleware/auth.js";
 import { prisma } from "../prisma/client.js";
+import { sendRenewalReminderEmail } from "../services/emailService.js";
 
 const router = express.Router();
 
 const PLAN_NAMES = { starter: "Starter", pro: "Pro", scale: "Scale" };
+
+export const PLAN_LIMITS = {
+  starter: { leadsPerMonth: 100, voice: false, locations: 1, label: "Starter" },
+  pro:     { leadsPerMonth: 500, voice: true,  locations: 1, label: "Pro" },
+  scale:   { leadsPerMonth: Infinity, voice: true, locations: 10, label: "Scale" },
+};
 
 function getStripe() {
   if (!process.env.STRIPE_SECRET_KEY) throw new Error("STRIPE_SECRET_KEY is not configured.");
@@ -128,6 +135,54 @@ router.post(
   })
 );
 
+// POST /api/payments/portal — create Stripe customer portal session (upgrade/downgrade/cancel)
+router.post(
+  "/portal",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    if (!req.user.stripeCustomerId) {
+      return res.status(400).json({ error: "No billing account found. Please subscribe first." });
+    }
+
+    const stripe = getStripe();
+    const baseUrl = (process.env.APP_BASE_URL || process.env.CLIENT_URL || "http://localhost:5173").replace(/\/$/, "");
+
+    const session = await stripe.billingPortal.sessions.create({
+      customer: req.user.stripeCustomerId,
+      return_url: `${baseUrl}/settings`
+    });
+
+    res.json({ url: session.url });
+  })
+);
+
+// GET /api/payments/usage — current plan limits and lead usage this month
+router.get(
+  "/usage",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const plan = (req.user.subscriptionPlan || "starter").toLowerCase();
+    const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.starter;
+
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const leadsThisMonth = await prisma.lead.count({
+      where: { businessId: req.business.id, createdAt: { gte: startOfMonth } }
+    });
+
+    res.json({
+      plan,
+      planLabel: limits.label,
+      subscriptionStatus: req.user.subscriptionStatus,
+      leadsThisMonth,
+      leadsLimit: limits.leadsPerMonth,
+      voice: limits.voice,
+      locations: limits.locations
+    });
+  })
+);
+
 // POST /api/payments/webhook — Stripe webhook (subscription lifecycle)
 router.post(
   "/webhook",
@@ -191,10 +246,41 @@ router.post(
       case "customer.subscription.updated": {
         const sub = event.data.object;
         const status = sub.status === "active" ? "active" : sub.status === "past_due" ? "past_due" : "inactive";
+
+        // Map price ID back to plan name so upgrades/downgrades sync correctly
+        const priceId = sub.items?.data?.[0]?.price?.id;
+        const planByPrice = {
+          [process.env.STRIPE_PRICE_STARTER]: "starter",
+          [process.env.STRIPE_PRICE_PRO]: "pro",
+          [process.env.STRIPE_PRICE_SCALE]: "scale"
+        };
+        const newPlan = priceId ? (planByPrice[priceId] || null) : null;
+
         await prisma.user.updateMany({
           where: { stripeSubscriptionId: sub.id },
-          data: { subscriptionStatus: status }
+          data: { subscriptionStatus: status, ...(newPlan ? { subscriptionPlan: newPlan } : {}) }
         });
+        console.log(`[stripe] Subscription updated: ${sub.id} → status=${status}${newPlan ? ` plan=${newPlan}` : ""}`);
+        break;
+      }
+      case "invoice.upcoming": {
+        const invoice = event.data.object;
+        if (invoice.subscription) {
+          const user = await prisma.user.findFirst({
+            where: { stripeSubscriptionId: invoice.subscription }
+          });
+          if (user?.email) {
+            const renewalDate = new Date(invoice.period_end * 1000);
+            await sendRenewalReminderEmail({
+              to: user.email,
+              name: user.name,
+              renewalDate,
+              plan: user.subscriptionPlan,
+              amountCents: invoice.amount_due
+            }).catch((e) => console.error("[stripe] Renewal reminder email failed:", e.message));
+            console.log(`[stripe] Renewal reminder sent to ${user.email} for subscription ${invoice.subscription}`);
+          }
+        }
         break;
       }
     }
