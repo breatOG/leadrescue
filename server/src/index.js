@@ -19,6 +19,7 @@ import leadRoutes from "./routes/leadRoutes.js";
 import appointmentRoutes from "./routes/appointmentRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
 import webhookRoutes from "./routes/webhookRoutes.js";
+import paymentRoutes from "./routes/paymentRoutes.js";
 import { hasTwilioConfig } from "./services/twilioService.js";
 import { WebSocketServer } from "ws";
 import { handleTwilioVoiceStream, aiVoiceEnabled } from "./services/realtimeVoiceService.js";
@@ -114,6 +115,7 @@ app.use("/api/leads", leadRoutes);
 app.use("/api", appointmentRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/webhooks", webhookRoutes);
+app.use("/api/payments", paymentRoutes);
 
 // Serve the React frontend in production
 const clientDist = path.join(serverDir, "..", "client", "dist");

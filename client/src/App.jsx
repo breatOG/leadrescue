@@ -7,6 +7,7 @@ import Dashboard from "./pages/Dashboard.jsx";
 import Leads from "./pages/Leads.jsx";
 import LeadDetail from "./pages/LeadDetail.jsx";
 import Settings from "./pages/Settings.jsx";
+import CustomInvoice from "./pages/CustomInvoice.jsx";
 
 function ProtectedRoute() {
   return getToken() ? <Layout /> : <Navigate to="/login" replace />;
@@ -23,6 +24,7 @@ export default function App() {
         <Route path="/leads" element={<Leads />} />
         <Route path="/leads/:id" element={<LeadDetail />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/invoice" element={<CustomInvoice />} />
       </Route>
     </Routes>
   );
