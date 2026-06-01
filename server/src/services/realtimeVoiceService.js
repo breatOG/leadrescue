@@ -76,6 +76,38 @@ export function createAiVoiceTwiML(req, { businessName, leadId, businessId, cust
 </Response>`;
 }
 
+// Encode a 16-bit linear PCM sample to µ-law
+function encodeMulaw(sample) {
+  const BIAS = 0x84;
+  const CLIP = 32635;
+  let s = Math.max(-CLIP, Math.min(CLIP, sample));
+  const sign = s < 0 ? 0x80 : 0;
+  if (s < 0) s = -s;
+  s += BIAS;
+  let exp = 7;
+  for (let mask = 0x4000; (s & mask) === 0 && exp > 0; exp--, mask >>= 1) {}
+  const mantissa = (s >> (exp + 3)) & 0x0f;
+  return (~(sign | (exp << 4) | mantissa)) & 0xff;
+}
+
+// Convert base64 PCM16-LE 24kHz chunk to base64 µ-law 8kHz, with carry buffer for partial frames
+function makePcmConverter() {
+  let remainder = Buffer.alloc(0);
+  return function convert(base64Chunk) {
+    const chunk = Buffer.from(base64Chunk, "base64");
+    const buf = Buffer.concat([remainder, chunk]);
+    const bytesPerOut = 6; // 3 input samples × 2 bytes each (downsample 24k→8k)
+    const outCount = Math.floor(buf.length / bytesPerOut);
+    remainder = buf.subarray(outCount * bytesPerOut);
+    if (outCount === 0) return null;
+    const out = Buffer.alloc(outCount);
+    for (let i = 0; i < outCount; i++) {
+      out[i] = encodeMulaw(buf.readInt16LE(i * bytesPerOut));
+    }
+    return out.toString("base64");
+  };
+}
+
 function sendJson(ws, payload) {
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(payload));
@@ -186,7 +218,7 @@ function updateRealtimeSession(openAiWs, callerMemory = "") {
       instructions: `${DEFAULT_INSTRUCTIONS}\n\n${callerMemory}`,
       voice,
       input_audio_format: "g711_ulaw",
-      output_audio_format: "g711_ulaw",
+      output_audio_format: "pcm16",
       input_audio_transcription: {
         model: "whisper-1"
       },
@@ -295,6 +327,7 @@ export function handleTwilioVoiceStream(twilioWs) {
     return;
   }
 
+  const convertPcmToMulaw = makePcmConverter();
   let streamSid = null;
   let sessionReady = false;
   let leadId = null;
@@ -382,12 +415,14 @@ export function handleTwilioVoiceStream(twilioWs) {
       const delta = getAudioDelta(event);
       if (delta) {
         assistantAudioCooldownUntil = Date.now() + 1500;
-        console.log(`[voice-ai] forwarding audio delta bytes=${delta.length}`);
-        sendJson(twilioWs, {
-          event: "media",
-          streamSid,
-          media: { payload: delta }
-        });
+        const mulaw = convertPcmToMulaw(delta);
+        if (mulaw) {
+          sendJson(twilioWs, {
+            event: "media",
+            streamSid,
+            media: { payload: mulaw }
+          });
+        }
       }
     }
 
