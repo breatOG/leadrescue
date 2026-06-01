@@ -131,6 +131,14 @@ app.use("/api", appointmentRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/webhooks", webhookRoutes);
 
+// Serve the React frontend in production
+const clientDist = path.join(serverDir, "..", "client", "dist");
+app.use(express.static(clientDist));
+app.get("*", (req, res, next) => {
+  if (req.path.startsWith("/api") || req.path.startsWith("/webhooks")) return next();
+  res.sendFile(path.join(clientDist, "index.html"));
+});
+
 app.use((error, req, res, next) => {
   console.error(error);
   const status = error.name === "ZodError" ? 400 : 500;
