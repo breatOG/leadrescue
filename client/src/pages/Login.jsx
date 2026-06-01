@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { api, setToken } from "../api/client.js";
+import { api, setToken, setUser } from "../api/client.js";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -15,7 +15,8 @@ export default function Login() {
     try {
       const data = await api("/api/auth/login", { method: "POST", body: form });
       setToken(data.token);
-      navigate("/dashboard");
+      setUser(data.user);
+      navigate(data.user?.subscriptionStatus === "active" ? "/dashboard" : "/subscribe");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -53,6 +54,12 @@ export default function Login() {
         <button className="button full" type="submit" disabled={loading}>
           {loading ? "Signing in…" : "Sign in"}
         </button>
+        <p style={{ textAlign: "center", marginTop: "1.25rem", fontSize: "0.875rem", color: "#64748b" }}>
+          Don't have an account?{" "}
+          <Link to="/register" style={{ color: "#2563eb", fontWeight: 600, textDecoration: "none" }}>
+            Sign up free
+          </Link>
+        </p>
       </form>
     </div>
   );

@@ -31,7 +31,9 @@ async function main() {
       phoneNumber: process.env.TWILIO_PHONE_NUMBER || "+13179519758",
       passwordHash: initialHash,
       name: "Owner",
-      role: "owner"
+      role: "owner",
+      subscriptionStatus: "active",
+      subscriptionPlan: "pro"
     }
   });
 

@@ -1,6 +1,7 @@
 import express from "express";
 import asyncHandler from "express-async-handler";
 import bcrypt from "bcryptjs";
+import Stripe from "stripe";
 import { z } from "zod";
 import { prisma } from "../prisma/client.js";
 import { signToken } from "../services/tokenService.js";
@@ -51,9 +52,50 @@ router.post(
   })
 );
 
-// Public signup is disabled — accounts are created by the owner in Settings
+// Public registration
+router.post(
+  "/register",
+  asyncHandler(async (req, res) => {
+    const { name, email, password } = z.object({
+      name: z.string().min(1, "Name is required"),
+      email: z.string().email("Invalid email address"),
+      password: z.string().min(8, "Password must be at least 8 characters")
+    }).parse(req.body);
+
+    const existing = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+    if (existing) return res.status(409).json({ error: "An account with this email already exists." });
+
+    const passwordHash = await bcrypt.hash(password, 12);
+
+    let stripeCustomerId;
+    if (process.env.STRIPE_SECRET_KEY) {
+      try {
+        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+        const customer = await stripe.customers.create({ email: email.toLowerCase(), name });
+        stripeCustomerId = customer.id;
+      } catch (err) {
+        console.error("[stripe] Failed to create customer during registration:", err.message);
+      }
+    }
+
+    const user = await prisma.user.create({
+      data: {
+        email: email.toLowerCase(),
+        passwordHash,
+        name,
+        role: "owner",
+        stripeCustomerId,
+        subscriptionStatus: "inactive"
+      }
+    });
+
+    return res.status(201).json({ token: signToken(user), user: publicUser(user) });
+  })
+);
+
+// Legacy signup disabled
 router.post("/signup", (req, res) => {
-  res.status(403).json({ error: "Account creation is managed by the business owner. Contact your administrator." });
+  res.status(403).json({ error: "Please use /api/auth/register to create an account." });
 });
 
 // Get current user

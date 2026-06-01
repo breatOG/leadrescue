@@ -35,7 +35,9 @@ const server = http.createServer(app);
 app.use(cors({ origin: process.env.CLIENT_URL || "http://localhost:5173" }));
 app.use(morgan("dev"));
 app.use(express.urlencoded({ extended: false }));
-app.use(express.json());
+app.use(express.json({
+  verify: (req, _res, buf) => { req.rawBody = buf; }
+}));
 
 app.get("/health", (req, res) => {
   res.json({

@@ -9,6 +9,25 @@ export function setToken(token) {
   else localStorage.removeItem("leadrescue_token");
 }
 
+export function getUser() {
+  try {
+    const raw = localStorage.getItem("leadrescue_user");
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setUser(user) {
+  if (user) localStorage.setItem("leadrescue_user", JSON.stringify(user));
+  else localStorage.removeItem("leadrescue_user");
+}
+
+export function isSubscribed() {
+  const user = getUser();
+  return user?.subscriptionStatus === "active";
+}
+
 export async function api(path, options = {}) {
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
   const token = getToken();

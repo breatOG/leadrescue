@@ -55,7 +55,7 @@ export default function Pricing() {
     if (plan.name === "Scale") {
       window.location.href = "mailto:hello@leadrescue.com?subject=Scale Plan Inquiry";
     } else {
-      navigate("/login");
+      navigate(`/register?plan=${plan.name.toLowerCase()}`);
     }
   }
 
