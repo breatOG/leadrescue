@@ -335,11 +335,6 @@ export function handleTwilioVoiceStream(twilioWs) {
   let businessName = "the business";
   let callerMemory = "";
   let currentAssistantTranscript = "";
-  let assistantAudioCooldownUntil = 0;
-  let localSpeechStartedAt = 0;
-  let localLastLoudAt = 0;
-  let localSpeechOpen = false;
-  const pendingCallerFrames = [];
   const seenEventTypes = new Set();
   const transcript = [];
   let saved = false;
@@ -408,13 +403,11 @@ export function handleTwilioVoiceStream(twilioWs) {
       const finalText = event.transcript || currentAssistantTranscript;
       appendTranscriptLine(transcript, "assistant", finalText);
       currentAssistantTranscript = "";
-      assistantAudioCooldownUntil = Date.now() + 1800;
     }
 
     if (isAudioDeltaEvent(event) && streamSid) {
       const delta = getAudioDelta(event);
       if (delta) {
-        assistantAudioCooldownUntil = Date.now() + 1500;
         const mulaw = convertPcmToMulaw(delta);
         if (mulaw) {
           sendJson(twilioWs, {
@@ -475,51 +468,12 @@ export function handleTwilioVoiceStream(twilioWs) {
     }
 
     if (event.event === "media" && event.media?.payload) {
-      if (Date.now() < assistantAudioCooldownUntil) {
-        return;
+      if (openAiWs.readyState === WebSocket.OPEN) {
+        sendJson(openAiWs, {
+          type: "input_audio_buffer.append",
+          audio: event.media.payload
+        });
       }
-
-      const now = Date.now();
-      const rms = getPcmuRms(event.media.payload);
-      const isLoudEnough = rms >= 0.018;
-
-      if (!isLoudEnough) {
-        if (localSpeechOpen && now - localLastLoudAt > 900) {
-          localSpeechOpen = false;
-          pendingCallerFrames.length = 0;
-        }
-        return;
-      }
-
-      if (!localSpeechOpen) {
-        localSpeechOpen = true;
-        localSpeechStartedAt = now;
-        pendingCallerFrames.length = 0;
-      }
-
-      localLastLoudAt = now;
-      pendingCallerFrames.push(event.media.payload);
-
-      const speechMs = now - localSpeechStartedAt;
-      if (speechMs < 420) {
-        if (pendingCallerFrames.length > 80) pendingCallerFrames.shift();
-        return;
-      }
-
-      if (pendingCallerFrames.length) {
-        for (const payload of pendingCallerFrames.splice(0)) {
-          sendJson(openAiWs, {
-            type: "input_audio_buffer.append",
-            audio: payload
-          });
-        }
-        return;
-      }
-
-      sendJson(openAiWs, {
-        type: "input_audio_buffer.append",
-        audio: event.media.payload
-      });
       return;
     }
 
