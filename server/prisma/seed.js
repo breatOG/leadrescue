@@ -35,19 +35,26 @@ async function main() {
     }
   });
 
+  const twilioPhone = process.env.TWILIO_PHONE_NUMBER || "+13179519758";
+
+  // Ensure only the owner's business owns the Twilio number
+  await prisma.business.updateMany({
+    where: { twilioPhoneNumber: twilioPhone, ownerId: { not: user.id } },
+    data: { twilioPhoneNumber: null }
+  });
+
+  // Always keep the owner's business phone number up to date
   await prisma.business.upsert({
     where: { ownerId: user.id },
-    update: {},
+    update: { twilioPhoneNumber: twilioPhone },
     create: {
       ownerId: user.id,
-      subscriptionPlanId: starter.id,
-      name: "Indy Comfort HVAC",
-      industryType: "HVAC contractor",
-      twilioPhoneNumber: process.env.TWILIO_PHONE_NUMBER || "+15551234567",
-      businessPhoneNumber: "+15557654321",
-      ownerNotificationPhone: "+15559876543",
-      ownerNotificationEmail: "demo@leadrescue.local",
-      serviceAreas: ["Indianapolis", "Carmel", "Fishers", "Noblesville"],
+      subscriptionPlanId: (await prisma.subscriptionPlan.findUnique({ where: { name: "Starter" } }))?.id,
+      name: "My Business",
+      industryType: "General Contractor",
+      twilioPhoneNumber: twilioPhone,
+      ownerNotificationEmail: "owner@leadrescue.app",
+      serviceAreas: [],
       businessHours: {
         monday: "8:00 AM - 5:00 PM",
         tuesday: "8:00 AM - 5:00 PM",
