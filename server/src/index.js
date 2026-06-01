@@ -31,7 +31,6 @@ import http from "node:http";
 import express from "express";
 import cors from "cors";
 import morgan from "morgan";
-import { WebSocketServer } from "ws";
 import authRoutes from "./routes/authRoutes.js";
 import businessRoutes from "./routes/businessRoutes.js";
 import leadRoutes from "./routes/leadRoutes.js";
@@ -39,7 +38,6 @@ import appointmentRoutes from "./routes/appointmentRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
 import webhookRoutes from "./routes/webhookRoutes.js";
 import { hasTwilioConfig } from "./services/twilioService.js";
-import { handleTwilioVoiceStream } from "./services/realtimeVoiceService.js";
 
 if (!process.env.JWT_SECRET) {
   process.env.JWT_SECRET = "local-dev-only-secret";
@@ -48,7 +46,6 @@ if (!process.env.JWT_SECRET) {
 const app = express();
 const port = process.env.PORT || 4000;
 const server = http.createServer(app);
-const wss = new WebSocketServer({ noServer: true });
 
 app.use(cors({ origin: process.env.CLIENT_URL || "http://localhost:5173" }));
 app.use(morgan("dev"));
@@ -154,21 +151,6 @@ app.use((error, req, res, next) => {
   }
 
   return res.status(status).json({ error: error.message || "Server error" });
-});
-
-server.on("upgrade", (req, socket, head) => {
-  const url = new URL(req.url, `http://${req.headers.host}`);
-  console.log(`[ws] upgrade: ${url.pathname}`);
-
-  if (url.pathname !== "/webhooks/twilio/voice-stream") {
-    console.log(`[ws] rejected unknown path: ${url.pathname}`);
-    socket.destroy();
-    return;
-  }
-
-  wss.handleUpgrade(req, socket, head, (ws) => {
-    handleTwilioVoiceStream(ws);
-  });
 });
 
 server.listen(port, () => {

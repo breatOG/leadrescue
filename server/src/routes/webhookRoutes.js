@@ -5,7 +5,10 @@ import { runAiLeadAgent } from "../services/aiLeadAgent.js";
 import { bookAppointment, getAvailableSlots } from "../services/schedulingService.js";
 import { notifyContractor } from "../services/notificationService.js";
 import { sendSms } from "../services/twilioService.js";
-import { createAiVoiceTwiML } from "../services/realtimeVoiceService.js";
+
+function esc(str) {
+  return String(str ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
 
 const router = express.Router();
 
@@ -166,16 +169,71 @@ router.post(
       business,
       lead: updatedLead,
       summary: "An AI voice call started and will be attached to this lead."
-    }).catch((error) => console.error("Voice notification failed:", error.message));
+    }).catch((e) => console.error("Voice notification failed:", e.message));
 
-    return res.type("text/xml").send(
-      createAiVoiceTwiML(req, {
-        businessName: business.name,
-        businessId: business.id,
-        leadId: updatedLead.id,
-        customerPhone: updatedLead.customerPhone
-      })
-    );
+    const gatherUrl = `/webhooks/twilio/voice-gather?leadId=${updatedLead.id}&businessId=${business.id}`;
+    return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Gather input="speech" action="${gatherUrl}" method="POST" speechTimeout="auto" language="en-US">
+    <Say voice="alice">Thanks for calling ${esc(business.name)}. How can I help you today?</Say>
+  </Gather>
+  <Say voice="alice">We didn't catch that. Please call back and we will be happy to help.</Say>
+</Response>`);
+  })
+);
+
+router.post(
+  "/twilio/voice-gather",
+  asyncHandler(async (req, res) => {
+    const { leadId, businessId } = req.query;
+    const speechResult = String(req.body.SpeechResult || "").trim();
+
+    const [lead, business] = await Promise.all([
+      prisma.lead.findUnique({ where: { id: leadId }, include: { messages: { orderBy: { createdAt: "asc" } } } }),
+      prisma.business.findUnique({ where: { id: businessId }, include: { serviceTypes: true } })
+    ]);
+
+    if (!lead || !business) {
+      return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?><Response><Say>Sorry, there was an error. Please call back.</Say></Response>`);
+    }
+
+    if (speechResult) {
+      await prisma.message.create({
+        data: { leadId: lead.id, direction: "inbound", channel: "voice", body: speechResult }
+      });
+    }
+
+    const messages = await prisma.message.findMany({ where: { leadId: lead.id }, orderBy: { createdAt: "asc" } });
+    const aiResult = await runAiLeadAgent({ business, lead, messages });
+
+    await prisma.message.create({
+      data: { leadId: lead.id, direction: "outbound", channel: "voice", body: aiResult.nextMessageToCustomer }
+    });
+
+    const updatedLead = await prisma.lead.update({
+      where: { id: lead.id },
+      data: {
+        ...aiResult.extractedFields,
+        priority: aiResult.leadPriority,
+        status: aiResult.leadStatus,
+        aiSummary: aiResult.contractorSummary,
+        lastMessage: aiResult.nextMessageToCustomer
+      }
+    });
+
+    if (["emergency", "high"].includes(updatedLead.priority) || updatedLead.status === "qualified") {
+      await notifyContractor({ business, lead: updatedLead, summary: aiResult.contractorSummary });
+    }
+
+    const gatherUrl = `/webhooks/twilio/voice-gather?leadId=${lead.id}&businessId=${business.id}`;
+    const aiSay = esc(aiResult.nextMessageToCustomer);
+    return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Gather input="speech" action="${gatherUrl}" method="POST" speechTimeout="auto" language="en-US">
+    <Say voice="alice">${aiSay}</Say>
+  </Gather>
+  <Say voice="alice">${aiSay} Please call back if you need anything else.</Say>
+</Response>`);
   })
 );
 
