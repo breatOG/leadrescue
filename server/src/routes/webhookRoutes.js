@@ -149,6 +149,7 @@ router.post(
 
     let lead = await findOrCreateLead({ business, from: req.body.From, source: "sms" });
     const inboundBody = String(req.body.Body || "").trim();
+    const fromPhone = business.twilioPhoneNumber || process.env.TWILIO_PHONE_NUMBER;
 
     await prisma.message.create({
       data: { leadId: lead.id, direction: "inbound", channel: "sms", body: inboundBody, twilioSid: req.body.MessageSid }
@@ -158,40 +159,57 @@ router.post(
       data: { lastMessage: inboundBody, status: lead.status === "new" ? "texting" : lead.status }
     });
 
+    // Appointment slot selection (if they texted 1/2/3 after being qualified)
     const bookedResponse = await handleAppointmentChoice({ business, lead, body: inboundBody });
     if (bookedResponse) return res.type("text/xml").send("<Response></Response>");
 
-    const messages = await prisma.message.findMany({ where: { leadId: lead.id }, orderBy: { createdAt: "asc" } });
-    const aiResult = await runAiLeadAgent({ business, lead, messages });
-    const result = await sendSms({
-      to: lead.customerPhone,
-      from: business.twilioPhoneNumber || process.env.TWILIO_PHONE_NUMBER,
-      body: aiResult.nextMessageToCustomer
+    const inboundCount = await prisma.message.count({
+      where: { leadId: lead.id, direction: "inbound", channel: "sms" }
     });
 
-    await prisma.message.create({
-      data: {
-        leadId: lead.id,
-        direction: "outbound",
-        channel: "sms",
-        body: aiResult.nextMessageToCustomer,
-        twilioSid: result.sid
+    let replyBody;
+
+    if (inboundCount === 1) {
+      // First ever text — send one simple intake message, no AI needed
+      replyBody = `Hi! Thanks for reaching out to ${business.name}. Please reply with your name, what service you need, and your address or ZIP — we'll get back to you shortly.`;
+    } else {
+      // They replied with info — run AI once to extract fields, then confirm and close the loop
+      try {
+        const messages = await prisma.message.findMany({ where: { leadId: lead.id }, orderBy: { createdAt: "asc" } });
+        const aiResult = await runAiLeadAgent({ business, lead, messages });
+
+        const name = aiResult.extractedFields?.customerName || lead.customerName;
+        const jobType = aiResult.extractedFields?.jobType || lead.jobType;
+
+        replyBody = `Thanks${name ? `, ${name}` : ""}! We've received your request${jobType ? ` for ${jobType}` : ""} and someone will call you back at ${lead.customerPhone} shortly.`;
+
+        const updatedLead = await prisma.lead.update({
+          where: { id: lead.id },
+          data: {
+            ...aiResult.extractedFields,
+            priority: aiResult.leadPriority,
+            status: "qualified",
+            aiSummary: aiResult.contractorSummary,
+            lastMessage: replyBody
+          }
+        });
+
+        notifyContractor({ business, lead: updatedLead, summary: aiResult.contractorSummary })
+          .catch((e) => console.error("SMS notify failed:", e.message));
+      } catch (err) {
+        console.error("[sms] AI extraction failed:", err.message);
+        replyBody = `Thanks! We've got your message and will call you back at ${lead.customerPhone} shortly.`;
       }
-    });
+    }
 
-    const updatedLead = await prisma.lead.update({
-      where: { id: lead.id },
-      data: {
-        ...aiResult.extractedFields,
-        priority: aiResult.leadPriority,
-        status: aiResult.leadStatus,
-        aiSummary: aiResult.contractorSummary,
-        lastMessage: aiResult.nextMessageToCustomer
-      }
-    });
-
-    if (["emergency", "high"].includes(updatedLead.priority) || updatedLead.status === "qualified") {
-      await notifyContractor({ business, lead: updatedLead, summary: aiResult.contractorSummary });
+    try {
+      const result = await sendSms({ to: lead.customerPhone, from: fromPhone, body: replyBody });
+      await prisma.message.create({
+        data: { leadId: lead.id, direction: "outbound", channel: "sms", body: replyBody, twilioSid: result.sid }
+      });
+      await prisma.lead.update({ where: { id: lead.id }, data: { lastMessage: replyBody } });
+    } catch (err) {
+      console.error("[sms] Failed to send reply:", err.message);
     }
 
     return res.type("text/xml").send("<Response></Response>");
@@ -219,12 +237,6 @@ router.post(
       where: { id: lead.id },
       data: { status: lead.status === "new" ? "texting" : lead.status, lastMessage: "AI voice call started" }
     });
-
-    notifyContractor({
-      business,
-      lead: updatedLead,
-      summary: "An AI voice call started and will be attached to this lead."
-    }).catch((e) => console.error("Voice notification failed:", e.message));
 
     await prisma.message.create({
       data: { leadId: updatedLead.id, direction: "inbound", channel: "voice", body: "[call started]" }

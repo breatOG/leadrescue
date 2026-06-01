@@ -31,7 +31,11 @@ export default function LeadDetail() {
     setNotes(data.lead.manualNotes || "");
   }
 
-  useEffect(() => { loadLead(); }, [id]);
+  useEffect(() => {
+    loadLead();
+    const interval = setInterval(loadLead, 15000);
+    return () => clearInterval(interval);
+  }, [id]);
 
   async function saveNotes() {
     await api(`/api/leads/${id}`, { method: "PATCH", body: { manualNotes: notes } });
@@ -115,7 +119,9 @@ export default function LeadDetail() {
         <div className="message-thread">
           {visibleMessages.map((message) => (
             <div className={`message ${message.direction}`} key={message.id}>
-              <small>{channelIcon(message.channel)} {message.channel} · {message.direction} · {new Date(message.createdAt).toLocaleString()}</small>
+              <small>
+                {channelIcon(message.channel)} {message.direction === "inbound" ? "Customer" : "AI"} · {new Date(message.createdAt).toLocaleString()}
+              </small>
               <p>{message.body}</p>
             </div>
           ))}
