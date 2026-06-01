@@ -361,38 +361,50 @@ function SmsStatusPanel() {
 
 function UserManagement() {
   const [users, setUsers] = useState([]);
-  const [form, setForm] = useState({ name: "", identifier: "", password: "", role: "staff" });
+  const [invitations, setInvitations] = useState([]);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteName, setInviteName] = useState("");
+  const [inviteMsg, setInviteMsg] = useState("");
+  const [inviting, setInviting] = useState(false);
   const [pwForm, setPwForm] = useState({ currentPassword: "", newPassword: "" });
-  const [msg, setMsg] = useState("");
   const [pwMsg, setPwMsg] = useState("");
 
-  async function loadUsers() {
-    const data = await api("/api/auth/users");
-    setUsers(data.users);
+  async function load() {
+    const [ud, id] = await Promise.all([
+      api("/api/auth/users").catch(() => ({ users: [] })),
+      api("/api/invites").catch(() => ({ invitations: [] }))
+    ]);
+    setUsers(ud.users || []);
+    setInvitations(id.invitations || []);
   }
 
-  useEffect(() => { loadUsers(); }, []);
+  useEffect(() => { load(); }, []);
 
-  async function addUser(e) {
+  async function sendInvite(e) {
     e.preventDefault();
-    setMsg("");
+    setInviteMsg(""); setInviting(true);
     try {
-      await api("/api/auth/users", { method: "POST", body: form });
-      setForm({ name: "", identifier: "", password: "", role: "staff" });
-      setMsg("User added.");
-      await loadUsers();
-    } catch (err) { setMsg(err.message); }
+      await api("/api/invites", { method: "POST", body: { email: inviteEmail, name: inviteName } });
+      setInviteEmail(""); setInviteName("");
+      setInviteMsg("Invitation sent! They'll receive an email with a link to join.");
+      await load();
+    } catch (err) { setInviteMsg(err.message); }
+    finally { setInviting(false); }
+  }
+
+  async function cancelInvite(id) {
+    await api(`/api/invites/${id}`, { method: "DELETE" });
+    await load();
   }
 
   async function removeUser(id) {
-    if (!confirm("Remove this user?")) return;
+    if (!confirm("Remove this team member?")) return;
     await api(`/api/auth/users/${id}`, { method: "DELETE" });
-    await loadUsers();
+    await load();
   }
 
   async function changePassword(e) {
-    e.preventDefault();
-    setPwMsg("");
+    e.preventDefault(); setPwMsg("");
     try {
       await api("/api/auth/password", { method: "PATCH", body: pwForm });
       setPwForm({ currentPassword: "", newPassword: "" });
@@ -402,37 +414,59 @@ function UserManagement() {
 
   return (
     <>
-      <h2>Team access</h2>
+      <h2>Team members</h2>
       <div className="user-list">
         {users.map((u) => (
           <div className="user-row" key={u.id}>
-            <div>
-              <strong>{u.name || "Unnamed"}</strong>
-              <span className="muted"> · {u.phoneNumber || u.email} · {u.role}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: "50%", background: "linear-gradient(135deg, #0f766e, #115e59)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800, fontSize: "0.82rem", flexShrink: 0 }}>
+                {(u.name || u.email || "?")[0].toUpperCase()}
+              </div>
+              <div>
+                <strong>{u.name || "Unnamed"}</strong>
+                <div className="muted" style={{ fontSize: "0.8rem" }}>{u.email} · <span style={{ textTransform: "capitalize" }}>{u.role}</span></div>
+              </div>
             </div>
-            <button className="ghost small" onClick={() => removeUser(u.id)}>Remove</button>
+            <button className="ghost small" onClick={() => removeUser(u.id)} style={{ fontSize: "0.8rem" }}>Remove</button>
           </div>
         ))}
       </div>
 
-      <h3>Add user</h3>
-      <form className="settings-form" onSubmit={addUser}>
+      {invitations.length > 0 && (
+        <>
+          <h3 style={{ marginTop: 20, marginBottom: 10 }}>Pending invitations</h3>
+          <div className="user-list">
+            {invitations.map((inv) => (
+              <div className="user-row" key={inv.id} style={{ background: "#fffbeb", borderColor: "#fde68a" }}>
+                <div>
+                  <strong>{inv.name || inv.email}</strong>
+                  <div className="muted" style={{ fontSize: "0.8rem" }}>{inv.email} · Invite sent — waiting to accept</div>
+                </div>
+                <button className="ghost small" onClick={() => cancelInvite(inv.id)} style={{ fontSize: "0.8rem" }}>Cancel</button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      <h3 style={{ marginTop: 22 }}>Invite a team member</h3>
+      <p style={{ fontSize: "0.84rem", color: "#64748b", marginTop: 0, marginBottom: 14 }}>
+        They'll receive an email with a link to create their account and access your dashboard.
+      </p>
+      <form className="settings-form" onSubmit={sendInvite}>
         <div className="form-grid">
-          <label>Name<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></label>
-          <label>Phone or email<input value={form.identifier} onChange={(e) => setForm({ ...form, identifier: e.target.value })} placeholder="+13175550000" required /></label>
-          <label>Password<input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required /></label>
-          <label>Role
-            <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-              <option value="owner">Owner</option>
-              <option value="staff">Staff</option>
-            </select>
+          <label>Name <span style={{ fontWeight: 400, color: "#9ca3af" }}>(optional)</span>
+            <input value={inviteName} onChange={(e) => setInviteName(e.target.value)} placeholder="Jane Smith" />
+          </label>
+          <label>Email address
+            <input type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="jane@yourbusiness.com" required />
           </label>
         </div>
-        {msg && <p className={msg.includes("added") ? "success" : "error"}>{msg}</p>}
-        <button className="button" type="submit">Add user</button>
+        {inviteMsg && <p className={inviteMsg.includes("sent") ? "success" : "error"}>{inviteMsg}</p>}
+        <button className="button" type="submit" disabled={inviting}>{inviting ? "Sending…" : "Send invitation"}</button>
       </form>
 
-      <h2>Change your password</h2>
+      <h2 style={{ marginTop: 28 }}>Change your password</h2>
       <form className="settings-form" onSubmit={changePassword}>
         <div className="form-grid">
           <label>Current password<input type="password" value={pwForm.currentPassword} onChange={(e) => setPwForm({ ...pwForm, currentPassword: e.target.value })} required /></label>

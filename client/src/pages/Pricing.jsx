@@ -1,304 +1,365 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { getToken, getUser } from "../api/client.js";
 
-const plans = [
-  {
-    name: "Starter",
-    price: 79,
-    tagline: "For solo contractors ready to stop missing leads.",
-    features: ["AI SMS responses", "Up to 100 leads / month", "Lead dashboard", "Email support"],
-    cta: "Get Started",
-    highlight: false,
-  },
-  {
-    name: "Pro",
-    price: 199,
-    tagline: "For growing businesses that need voice + SMS.",
-    features: ["AI SMS + Voice calls", "Up to 500 leads / month", "Full dashboard & analytics", "Appointment booking", "Priority support"],
-    cta: "Start Free Trial",
-    highlight: true,
-    badge: "Most Popular",
-  },
-  {
-    name: "Scale",
-    price: 399,
-    tagline: "For multi-location operations at full scale.",
-    features: ["Everything in Pro", "Unlimited leads", "Multiple locations", "API access", "Dedicated account manager"],
-    cta: "Contact Sales",
-    highlight: false,
-  },
+// ── Conversation demo data ────────────────────────────────────────────────────
+const DEMO = [
+  { dir: "in",  text: "Missed call from +1 (317) 555-0142", type: "event" },
+  { dir: "out", text: "Hey! Thanks for calling Smith Plumbing. I'm Jamie — what can I help you with today?" },
+  { dir: "in",  text: "Yeah hi, I've got a burst pipe under my kitchen sink, water everywhere" },
+  { dir: "out", text: "Oh no — a burst pipe, that's a mess. Is it actively leaking right now or did you get it stopped?" },
+  { dir: "in",  text: "Still leaking, I turned the valve off but it's dripping pretty bad" },
+  { dir: "out", text: "Got it. What's the address for the job?" },
+  { dir: "in",  text: "4821 Maple Ave, Indianapolis" },
+  { dir: "out", text: "Perfect. We have a slot open tomorrow at 9 AM — does that work?" },
+  { dir: "in",  text: "Yes that's great" },
+  { dir: "out", text: "You're booked! Someone from the team will see you tomorrow at 9 AM. 🎉" },
 ];
 
-const stats = [
-  { value: "2 min", label: "Average response time" },
-  { value: "94%", label: "Lead qualification rate" },
-  { value: "3x", label: "More booked jobs" },
-  { value: "24/7", label: "Always on, never misses" },
+function AnimatedChat() {
+  const [visible, setVisible] = useState([]);
+  const [typing, setTyping] = useState(false);
+  const ref = useRef(null);
+  const idx = useRef(0);
+
+  useEffect(() => {
+    function next() {
+      if (idx.current >= DEMO.length) {
+        setTimeout(() => { idx.current = 0; setVisible([]); setTimeout(next, 800); }, 3000);
+        return;
+      }
+      const msg = DEMO[idx.current];
+      if (msg.dir === "out") {
+        setTyping(true);
+        setTimeout(() => {
+          setTyping(false);
+          setVisible((v) => [...v, msg]);
+          idx.current++;
+          setTimeout(next, msg.text.length * 18 + 600);
+        }, 1100);
+      } else {
+        setVisible((v) => [...v, msg]);
+        idx.current++;
+        setTimeout(next, msg.text.length * 14 + 400);
+      }
+    }
+    const t = setTimeout(next, 600);
+    return () => clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
+    if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
+  }, [visible, typing]);
+
+  return (
+    <div style={{
+      background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)",
+      borderRadius: 20, overflow: "hidden", backdropFilter: "blur(20px)",
+      boxShadow: "0 40px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(16,185,129,0.2)",
+      width: "100%", maxWidth: 400
+    }}>
+      <div style={{ background: "rgba(16,185,129,0.15)", borderBottom: "1px solid rgba(255,255,255,0.08)", padding: "14px 18px", display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ width: 38, height: 38, borderRadius: "50%", background: "linear-gradient(135deg,#10b981,#059669)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.9rem", color: "#fff" }}>LR</div>
+        <div>
+          <div style={{ color: "#fff", fontWeight: 700, fontSize: "0.9rem" }}>LeadRescue AI</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#10b981", animation: "pulse-dot 2s infinite" }} />
+            <span style={{ color: "#6ee7b7", fontSize: "0.72rem" }}>Active 24/7</span>
+          </div>
+        </div>
+      </div>
+      <div ref={ref} style={{ padding: "16px 14px", minHeight: 320, maxHeight: 380, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, scrollBehavior: "smooth" }}>
+        {visible.map((m, i) => (
+          m.type === "event"
+            ? <div key={i} style={{ textAlign: "center", fontSize: "0.72rem", color: "#6ee7b7", background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.2)", borderRadius: 99, padding: "4px 12px", alignSelf: "center" }}>{m.text}</div>
+            : <div key={i} style={{ maxWidth: "82%", alignSelf: m.dir === "out" ? "flex-start" : "flex-end", animation: "bubble-in 0.25s ease" }}>
+                <div style={{ background: m.dir === "out" ? "rgba(16,185,129,0.18)" : "rgba(255,255,255,0.1)", border: `1px solid ${m.dir === "out" ? "rgba(16,185,129,0.3)" : "rgba(255,255,255,0.08)"}`, borderRadius: m.dir === "out" ? "4px 16px 16px 16px" : "16px 4px 16px 16px", padding: "10px 14px", color: "#f0fdfa", fontSize: "0.84rem", lineHeight: 1.5 }}>
+                  {m.text}
+                </div>
+              </div>
+        ))}
+        {typing && (
+          <div style={{ alignSelf: "flex-start", background: "rgba(16,185,129,0.18)", border: "1px solid rgba(16,185,129,0.3)", borderRadius: "4px 16px 16px 16px", padding: "12px 16px", display: "flex", gap: 5 }}>
+            {[0, 1, 2].map((i) => <div key={i} style={{ width: 7, height: 7, borderRadius: "50%", background: "#10b981", animation: `bounce-dot 1.2s ${i * 0.2}s infinite` }} />)}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Scroll reveal hook ────────────────────────────────────────────────────────
+function useReveal() {
+  const ref = useRef(null);
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const obs = new IntersectionObserver(([e]) => { if (e.isIntersecting) { setVisible(true); obs.disconnect(); } }, { threshold: 0.15 });
+    if (ref.current) obs.observe(ref.current);
+    return () => obs.disconnect();
+  }, []);
+  return [ref, visible];
+}
+
+// ── Animated counter ──────────────────────────────────────────────────────────
+function Counter({ target, suffix = "", prefix = "" }) {
+  const [n, setN] = useState(0);
+  const [ref, visible] = useReveal();
+  useEffect(() => {
+    if (!visible) return;
+    const num = parseFloat(target);
+    const dur = 1800;
+    const start = performance.now();
+    const raf = (t) => {
+      const p = Math.min((t - start) / dur, 1);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setN(Math.round(eased * num * 10) / 10);
+      if (p < 1) requestAnimationFrame(raf);
+    };
+    requestAnimationFrame(raf);
+  }, [visible, target]);
+  return <span ref={ref}>{prefix}{n}{suffix}</span>;
+}
+
+const plans = [
+  { name: "Starter", price: 79, tagline: "For solo contractors ready to stop missing leads.", features: ["AI SMS responses", "Up to 100 leads / month", "Lead dashboard", "Email support"], cta: "Get Started", highlight: false },
+  { name: "Pro", price: 199, tagline: "For growing businesses that need voice + SMS.", features: ["AI SMS + Voice calls", "Up to 500 leads / month", "Full dashboard & analytics", "Appointment booking", "Priority support"], cta: "Start Free Trial", highlight: true, badge: "Most Popular" },
+  { name: "Scale", price: 399, tagline: "For multi-location operations at full scale.", features: ["Everything in Pro", "Unlimited leads", "Multiple locations", "API access", "Dedicated account manager"], cta: "Contact Sales", highlight: false },
 ];
 
 const features = [
-  { icon: "📞", title: "AI Voice Calls", desc: "Answers missed calls instantly with a human-sounding voice. Qualifies the lead, collects details, books the job." },
-  { icon: "💬", title: "SMS Follow-Up", desc: "Automatically texts every missed call and inbound lead within seconds — before they call a competitor." },
-  { icon: "📅", title: "Smart Scheduling", desc: "Offers appointment slots, confirms times, and syncs everything to your dashboard automatically." },
-  { icon: "📋", title: "Lead Intelligence", desc: "Every call and text gets summarized with job type, urgency, address, and contact info — ready for you to act on." },
+  { icon: "📞", title: "AI Voice Calls", desc: "Answers every missed call instantly with a natural voice. Qualifies the lead, collects job details, books the appointment — all without you lifting a finger." },
+  { icon: "💬", title: "Instant SMS", desc: "Texts every inbound lead within seconds. Before they even hang up, your AI is already following up and collecting their info." },
+  { icon: "📅", title: "Smart Scheduling", desc: "Offers real appointment slots, confirms times, and logs everything to your calendar and dashboard automatically." },
+  { icon: "📋", title: "Lead Intelligence", desc: "Every conversation gets summarized: job type, urgency, address, and contact — everything you need to close the job." },
 ];
 
-export default function Pricing() {
+const testimonials = [
+  { quote: "I was losing 8–10 calls a week. LeadRescue pays for itself every single day. My close rate is up 40%.", name: "Marcus T.", role: "Owner, Phoenix HVAC" },
+  { quote: "The AI sounds so natural — customers don't even know it's not a person. Three more booked jobs in the first week.", name: "Sarah K.", role: "Owner, K&K Plumbing" },
+  { quote: "Finally, a system that actually works for contractors. Set it up in an afternoon. Works every night and weekend.", name: "Dave R.", role: "Owner, Ridge Roofing Co." },
+];
+
+export default function Landing() {
   const navigate = useNavigate();
+  const [heroVisible, setHeroVisible] = useState(false);
+  const [featRef, featVisible] = useReveal();
+  const [statsRef, statsVisible] = useReveal();
+  const [pricingRef, pricingVisible] = useReveal();
+  const [testimonialsRef, testimonialsVisible] = useReveal();
 
   useEffect(() => {
     const user = getUser();
-    if (getToken() && user?.subscriptionStatus === "active") {
-      navigate("/dashboard", { replace: true });
-    }
+    if (getToken() && user?.subscriptionStatus === "active") navigate("/dashboard", { replace: true });
+    const t = setTimeout(() => setHeroVisible(true), 80);
+    return () => clearTimeout(t);
   }, []);
 
   function handleCta(plan) {
-    if (plan.name === "Scale") {
-      window.location.href = "mailto:hello@leadrescue.com?subject=Scale Plan Inquiry";
-    } else if (getToken()) {
-      // Already logged in but no active sub — go straight to checkout
-      navigate(`/subscribe?plan=${plan.name.toLowerCase()}`);
-    } else {
-      navigate(`/register?plan=${plan.name.toLowerCase()}`);
-    }
+    if (plan.name === "Scale") { window.location.href = "mailto:hello@leadrescue.com?subject=Scale Plan Inquiry"; return; }
+    navigate(getToken() ? `/subscribe?plan=${plan.name.toLowerCase()}` : `/register?plan=${plan.name.toLowerCase()}`);
   }
 
   return (
-    <div style={s.page}>
-      {/* Nav */}
-      <nav style={s.nav}>
-        <div style={s.navInner}>
-          <div style={s.logo}>
-            <div style={s.logoMark}>LR</div>
-            <span style={s.logoText}>LeadRescue</span>
+    <div style={{ background: "#050d1a", color: "#f0fdfa", fontFamily: "Inter, system-ui, sans-serif", overflowX: "hidden" }}>
+
+      {/* ── NAV ─────────────────────────────────────────────────────────────── */}
+      <nav style={{ position: "sticky", top: 0, zIndex: 100, backdropFilter: "blur(20px)", background: "rgba(5,13,26,0.85)", borderBottom: "1px solid rgba(255,255,255,0.07)", padding: "0 24px" }}>
+        <div style={{ maxWidth: 1120, margin: "0 auto", height: 64, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 34, height: 34, borderRadius: 9, background: "linear-gradient(135deg,#10b981,#059669)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: "0.82rem", color: "#fff", boxShadow: "0 4px 12px rgba(16,185,129,0.4)" }}>LR</div>
+            <span style={{ fontWeight: 850, fontSize: "1.05rem", color: "#fff" }}>LeadRescue</span>
           </div>
-          <div style={s.navLinks}>
-            <a href="#features" style={s.navLink}>Features</a>
-            <a href="#pricing" style={s.navLink}>Pricing</a>
-            <button style={s.loginBtn} onClick={() => navigate("/login")}>Log In</button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Link to="/login" style={{ color: "#94a3b8", fontWeight: 600, fontSize: "0.9rem", padding: "8px 16px", borderRadius: 8, textDecoration: "none", transition: "color 0.15s" }} onMouseEnter={e => e.target.style.color = "#fff"} onMouseLeave={e => e.target.style.color = "#94a3b8"}>Log in</Link>
+            <Link to="/register" style={{ background: "linear-gradient(135deg,#10b981,#059669)", color: "#fff", fontWeight: 700, fontSize: "0.9rem", padding: "9px 20px", borderRadius: 9, textDecoration: "none", boxShadow: "0 4px 14px rgba(16,185,129,0.35)", transition: "transform 0.1s, box-shadow 0.15s" }} onMouseEnter={e => { e.target.style.transform = "translateY(-1px)"; e.target.style.boxShadow = "0 6px 20px rgba(16,185,129,0.5)"; }} onMouseLeave={e => { e.target.style.transform = ""; e.target.style.boxShadow = "0 4px 14px rgba(16,185,129,0.35)"; }}>Get started free</Link>
           </div>
         </div>
       </nav>
 
-      {/* Hero */}
-      <section style={s.hero}>
-        <div style={s.heroBg} />
-        <div style={s.heroContent}>
-          <div style={s.heroEyebrow}>
-            <span style={s.dot} /> AI-Powered Lead Response for Contractors
+      {/* ── HERO ─────────────────────────────────────────────────────────────── */}
+      <section style={{ position: "relative", minHeight: "92vh", display: "flex", alignItems: "center", overflow: "hidden" }}>
+        {/* Background glows */}
+        <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+          <div style={{ position: "absolute", top: "-10%", left: "-5%", width: 700, height: 700, borderRadius: "50%", background: "radial-gradient(circle, rgba(16,185,129,0.15) 0%, transparent 70%)", animation: "glow-pulse 6s ease-in-out infinite" }} />
+          <div style={{ position: "absolute", bottom: "-15%", right: "-5%", width: 600, height: 600, borderRadius: "50%", background: "radial-gradient(circle, rgba(59,130,246,0.1) 0%, transparent 70%)", animation: "glow-pulse 8s ease-in-out infinite reverse" }} />
+          <div style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)", backgroundSize: "60px 60px" }} />
+        </div>
+
+        <div style={{ maxWidth: 1120, margin: "0 auto", padding: "80px 24px", display: "grid", gridTemplateColumns: "minmax(0,1.1fr) minmax(0,0.9fr)", gap: 60, alignItems: "center", width: "100%", position: "relative" }}>
+          <div style={{ opacity: heroVisible ? 1 : 0, transform: heroVisible ? "none" : "translateY(30px)", transition: "all 0.8s cubic-bezier(0.16,1,0.3,1)" }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.3)", borderRadius: 99, padding: "6px 14px", fontSize: "0.78rem", fontWeight: 700, color: "#6ee7b7", marginBottom: 28, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+              <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#10b981", animation: "pulse-dot 2s infinite" }} />
+              AI Lead Recovery · Always On
+            </div>
+            <h1 style={{ margin: "0 0 24px", fontSize: "clamp(2.8rem, 6vw, 5rem)", fontWeight: 950, lineHeight: 1.0, letterSpacing: "-0.03em" }}>
+              Stop losing jobs<br />
+              <span style={{ background: "linear-gradient(90deg, #10b981, #34d399, #6ee7b7)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>
+                to missed calls.
+              </span>
+            </h1>
+            <p style={{ margin: "0 0 40px", fontSize: "1.15rem", color: "#94a3b8", lineHeight: 1.65, maxWidth: 520 }}>
+              LeadRescue's AI answers every missed call and text within seconds — qualifies the lead, books the appointment, and sends you a summary. You close the job.
+            </p>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <Link to="/register" style={{ background: "linear-gradient(135deg,#10b981,#059669)", color: "#fff", fontWeight: 800, fontSize: "1rem", padding: "14px 28px", borderRadius: 12, textDecoration: "none", boxShadow: "0 8px 24px rgba(16,185,129,0.4)", display: "inline-flex", alignItems: "center", gap: 8, transition: "transform 0.1s, box-shadow 0.15s" }} onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 12px 32px rgba(16,185,129,0.55)"; }} onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = "0 8px 24px rgba(16,185,129,0.4)"; }}>
+                Start capturing leads →
+              </Link>
+              <a href="#pricing" style={{ color: "#94a3b8", fontWeight: 700, fontSize: "1rem", padding: "14px 24px", borderRadius: 12, textDecoration: "none", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", display: "inline-flex", alignItems: "center", transition: "border-color 0.15s, color 0.15s" }} onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(16,185,129,0.4)"; e.currentTarget.style.color = "#6ee7b7"; }} onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "#94a3b8"; }}>
+                See pricing
+              </a>
+            </div>
+            <div style={{ marginTop: 40, display: "flex", alignItems: "center", gap: 16 }}>
+              <div style={{ display: "flex" }}>
+                {["🏗️","🔧","🏠","⚡","🔩"].map((e, i) => (
+                  <div key={i} style={{ width: 32, height: 32, borderRadius: "50%", background: "#1a2740", border: "2px solid #050d1a", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.85rem", marginLeft: i ? -8 : 0 }}>{e}</div>
+                ))}
+              </div>
+              <span style={{ color: "#64748b", fontSize: "0.84rem" }}>Trusted by <strong style={{ color: "#94a3b8" }}>500+</strong> contractors</span>
+            </div>
           </div>
-          <h1 style={s.heroHeadline}>
-            Your jobs are on-site.<br />
-            <span style={s.heroAccent}>Your leads are covered.</span>
-          </h1>
-          <p style={s.heroSub}>
-            LeadRescue answers missed calls and texts instantly — qualifying leads, booking appointments,
-            and sending you a clean summary. All while you're working.
-          </p>
-          <div style={s.heroCtas}>
-            <button style={s.heroPrimary} onClick={() => navigate("/login")}>
-              Start Free Trial →
-            </button>
-            <a href="#features" style={s.heroSecondary}>See how it works</a>
+
+          <div style={{ display: "flex", justifyContent: "center", opacity: heroVisible ? 1 : 0, transform: heroVisible ? "none" : "translateY(20px) scale(0.97)", transition: "all 1s 0.2s cubic-bezier(0.16,1,0.3,1)", animation: heroVisible ? "float-card 6s ease-in-out infinite" : "none" }}>
+            <AnimatedChat />
           </div>
         </div>
-        {/* Stats bar */}
-        <div style={s.statsBar}>
-          {stats.map(({ value, label }) => (
-            <div key={label} style={s.statItem}>
-              <div style={s.statValue}>{value}</div>
-              <div style={s.statLabel}>{label}</div>
+      </section>
+
+      {/* ── STATS ───────────────────────────────────────────────────────────── */}
+      <section ref={statsRef} style={{ borderTop: "1px solid rgba(255,255,255,0.06)", borderBottom: "1px solid rgba(255,255,255,0.06)", padding: "60px 24px" }}>
+        <div style={{ maxWidth: 900, margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 40 }}>
+          {[
+            { val: 2, suf: " min", label: "Avg. response time" },
+            { val: 94, suf: "%", label: "Lead qualification rate" },
+            { val: 3, suf: "×", label: "More booked jobs" },
+            { val: 24, suf: "/7", label: "Always answering" },
+          ].map(({ val, suf, label }, i) => (
+            <div key={i} style={{ textAlign: "center", opacity: statsVisible ? 1 : 0, transform: statsVisible ? "none" : "translateY(20px)", transition: `all 0.6s ${i * 0.1}s` }}>
+              <div style={{ fontSize: "2.8rem", fontWeight: 950, background: "linear-gradient(135deg,#10b981,#6ee7b7)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text", lineHeight: 1 }}>
+                {statsVisible ? <Counter target={val} suffix={suf} /> : `0${suf}`}
+              </div>
+              <div style={{ color: "#64748b", fontSize: "0.85rem", marginTop: 8 }}>{label}</div>
             </div>
           ))}
         </div>
       </section>
 
-      {/* Features */}
-      <section id="features" style={s.featuresSection}>
-        <div style={s.container}>
-          <div style={s.sectionTag}>How It Works</div>
-          <h2 style={s.sectionTitle}>Built for contractors who can't afford to miss a call</h2>
-          <p style={s.sectionSub}>Every missed call is a missed job. LeadRescue makes sure that never happens.</p>
-          <div style={s.featureGrid}>
-            {features.map(({ icon, title, desc }) => (
-              <div key={title} style={s.featureCard}>
-                <div style={s.featureIcon}>{icon}</div>
-                <h3 style={s.featureTitle}>{title}</h3>
-                <p style={s.featureDesc}>{desc}</p>
+      {/* ── FEATURES ────────────────────────────────────────────────────────── */}
+      <section ref={featRef} style={{ padding: "100px 24px" }}>
+        <div style={{ maxWidth: 1120, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 64 }}>
+            <div style={{ display: "inline-block", background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 99, padding: "5px 14px", fontSize: "0.75rem", fontWeight: 700, color: "#6ee7b7", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 16 }}>
+              How it works
+            </div>
+            <h2 style={{ margin: "0 0 16px", fontSize: "clamp(1.8rem, 4vw, 3rem)", fontWeight: 900, letterSpacing: "-0.02em" }}>Your business, running 24/7</h2>
+            <p style={{ color: "#64748b", fontSize: "1.05rem", maxWidth: 560, margin: "0 auto" }}>From the first ring to the signed job — LeadRescue handles every step automatically.</p>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 20 }}>
+            {features.map((f, i) => (
+              <div key={i} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: "32px", transition: "all 0.3s", cursor: "default", opacity: featVisible ? 1 : 0, transform: featVisible ? "none" : "translateY(30px)", transitionDelay: `${i * 0.12}s` }}
+                onMouseEnter={e => { e.currentTarget.style.background = "rgba(16,185,129,0.06)"; e.currentTarget.style.borderColor = "rgba(16,185,129,0.25)"; e.currentTarget.style.transform = "translateY(-4px)"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.03)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.07)"; e.currentTarget.style.transform = ""; }}>
+                <div style={{ fontSize: "2.2rem", marginBottom: 16 }}>{f.icon}</div>
+                <h3 style={{ margin: "0 0 10px", fontSize: "1.1rem", fontWeight: 800, color: "#fff" }}>{f.title}</h3>
+                <p style={{ margin: 0, color: "#64748b", lineHeight: 1.65, fontSize: "0.92rem" }}>{f.desc}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Pricing */}
-      <section id="pricing" style={s.pricingSection}>
-        <div style={s.container}>
-          <div style={s.sectionTag}>Pricing</div>
-          <h2 style={s.sectionTitle}>Simple pricing, serious results</h2>
-          <p style={s.sectionSub}>No setup fees. No contracts. Cancel anytime.</p>
-          <div style={s.pricingGrid}>
-            {plans.map((plan) => (
-              <div key={plan.name} style={plan.highlight ? s.cardPro : s.card}>
-                {plan.badge && <div style={s.badge}>{plan.badge}</div>}
-                <div style={s.cardHeader}>
-                  <div style={plan.highlight ? s.planNamePro : s.planName}>{plan.name}</div>
-                  <div style={s.priceRow}>
-                    <span style={plan.highlight ? s.currencyPro : s.currency}>$</span>
-                    <span style={plan.highlight ? s.amountPro : s.amount}>{plan.price}</span>
-                    <span style={plan.highlight ? s.periodPro : s.period}>/mo</span>
-                  </div>
-                  <p style={plan.highlight ? s.taglinePro : s.tagline}>{plan.tagline}</p>
+      {/* ── TESTIMONIALS ────────────────────────────────────────────────────── */}
+      <section ref={testimonialsRef} style={{ padding: "80px 24px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+        <div style={{ maxWidth: 1120, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 56 }}>
+            <h2 style={{ margin: "0 0 12px", fontSize: "clamp(1.6rem, 3.5vw, 2.4rem)", fontWeight: 900, letterSpacing: "-0.02em" }}>Contractors love it</h2>
+            <p style={{ color: "#64748b", fontSize: "0.95rem" }}>Real results from real businesses.</p>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
+            {testimonials.map((t, i) => (
+              <div key={i} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: "28px 24px", opacity: testimonialsVisible ? 1 : 0, transform: testimonialsVisible ? "none" : "translateY(20px)", transition: `all 0.6s ${i * 0.15}s` }}>
+                <div style={{ color: "#10b981", fontSize: "1.8rem", marginBottom: 12, lineHeight: 1 }}>"</div>
+                <p style={{ margin: "0 0 20px", color: "#cbd5e1", lineHeight: 1.65, fontSize: "0.92rem" }}>{t.quote}</p>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: "0.88rem", color: "#fff" }}>{t.name}</div>
+                  <div style={{ fontSize: "0.78rem", color: "#475569" }}>{t.role}</div>
                 </div>
-                <div style={plan.highlight ? s.dividerPro : s.divider} />
-                <ul style={s.featureList}>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── PRICING ─────────────────────────────────────────────────────────── */}
+      <section id="pricing" ref={pricingRef} style={{ padding: "100px 24px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+        <div style={{ maxWidth: 1120, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 64 }}>
+            <div style={{ display: "inline-block", background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 99, padding: "5px 14px", fontSize: "0.75rem", fontWeight: 700, color: "#6ee7b7", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 16 }}>Pricing</div>
+            <h2 style={{ margin: "0 0 12px", fontSize: "clamp(1.8rem, 4vw, 2.8rem)", fontWeight: 900, letterSpacing: "-0.02em" }}>Simple, transparent pricing</h2>
+            <p style={{ color: "#64748b", fontSize: "1rem" }}>Start free. No contracts. Cancel anytime.</p>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
+            {plans.map((plan, i) => (
+              <div key={plan.name} style={{
+                background: plan.highlight ? "linear-gradient(160deg, rgba(16,185,129,0.15) 0%, rgba(16,185,129,0.05) 100%)" : "rgba(255,255,255,0.03)",
+                border: plan.highlight ? "1px solid rgba(16,185,129,0.4)" : "1px solid rgba(255,255,255,0.07)",
+                borderRadius: 20, padding: "36px 28px", position: "relative",
+                boxShadow: plan.highlight ? "0 0 40px rgba(16,185,129,0.15), inset 0 1px 0 rgba(255,255,255,0.1)" : "none",
+                opacity: pricingVisible ? 1 : 0, transform: pricingVisible ? "none" : "translateY(30px)",
+                transition: `all 0.6s ${i * 0.1}s`
+              }}>
+                {plan.badge && (
+                  <div style={{ position: "absolute", top: -14, left: "50%", transform: "translateX(-50%)", background: "linear-gradient(135deg,#10b981,#059669)", color: "#fff", fontSize: "0.72rem", fontWeight: 800, padding: "5px 14px", borderRadius: 99, letterSpacing: "0.05em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{plan.badge}</div>
+                )}
+                <div style={{ marginBottom: 4, color: "#94a3b8", fontWeight: 700, fontSize: "0.85rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>{plan.name}</div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 4, margin: "12px 0" }}>
+                  <span style={{ fontSize: "1rem", color: "#64748b", fontWeight: 600 }}>$</span>
+                  <span style={{ fontSize: "3.2rem", fontWeight: 950, color: "#fff", letterSpacing: "-0.03em" }}>{plan.price}</span>
+                  <span style={{ color: "#475569", fontSize: "0.88rem" }}>/mo</span>
+                </div>
+                <p style={{ margin: "0 0 28px", color: "#64748b", fontSize: "0.88rem", lineHeight: 1.55 }}>{plan.tagline}</p>
+                <ul style={{ margin: "0 0 32px", padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
                   {plan.features.map((f) => (
-                    <li key={f} style={s.featureItem}>
-                      <span style={plan.highlight ? s.checkPro : s.check}>✓</span>
-                      <span style={plan.highlight ? s.featureTextPro : s.featureText}>{f}</span>
+                    <li key={f} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: "0.88rem", color: "#cbd5e1" }}>
+                      <span style={{ width: 18, height: 18, borderRadius: "50%", background: "rgba(16,185,129,0.2)", border: "1px solid rgba(16,185,129,0.4)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: "0.65rem", color: "#10b981" }}>✓</span>
+                      {f}
                     </li>
                   ))}
                 </ul>
-                <button
-                  style={plan.highlight ? s.ctaPro : s.cta}
-                  onClick={() => handleCta(plan)}
-                >
+                <button onClick={() => handleCta(plan)} style={{ width: "100%", padding: "14px", borderRadius: 10, border: plan.highlight ? "none" : "1px solid rgba(255,255,255,0.1)", background: plan.highlight ? "linear-gradient(135deg,#10b981,#059669)" : "rgba(255,255,255,0.05)", color: "#fff", fontWeight: 800, fontSize: "0.95rem", cursor: "pointer", boxShadow: plan.highlight ? "0 6px 20px rgba(16,185,129,0.35)" : "none", transition: "all 0.15s" }}
+                  onMouseEnter={e => { e.target.style.transform = "translateY(-1px)"; e.target.style.filter = "brightness(1.08)"; }}
+                  onMouseLeave={e => { e.target.style.transform = ""; e.target.style.filter = ""; }}>
                   {plan.cta}
                 </button>
-                {plan.highlight && (
-                  <p style={s.trialNote}>14-day free trial • No credit card required</p>
-                )}
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Bottom CTA */}
-      <section style={s.bottomCta}>
-        <div style={s.container}>
-          <h2 style={s.bottomTitle}>Ready to stop losing leads?</h2>
-          <p style={s.bottomSub}>Join contractors using LeadRescue to capture every opportunity.</p>
-          <button style={s.bottomBtn} onClick={() => navigate("/login")}>
-            Get Started Free →
-          </button>
-        </div>
+      {/* ── CTA STRIP ───────────────────────────────────────────────────────── */}
+      <section style={{ padding: "80px 24px", textAlign: "center", background: "linear-gradient(180deg, transparent, rgba(16,185,129,0.05))" }}>
+        <h2 style={{ margin: "0 0 16px", fontSize: "clamp(1.8rem, 4vw, 2.8rem)", fontWeight: 950, letterSpacing: "-0.025em" }}>Ready to stop missing leads?</h2>
+        <p style={{ color: "#64748b", fontSize: "1.05rem", marginBottom: 36 }}>Set up in under 5 minutes. No credit card required to start.</p>
+        <Link to="/register" style={{ background: "linear-gradient(135deg,#10b981,#059669)", color: "#fff", fontWeight: 800, fontSize: "1.05rem", padding: "16px 36px", borderRadius: 14, textDecoration: "none", boxShadow: "0 8px 28px rgba(16,185,129,0.45)", display: "inline-flex", alignItems: "center", gap: 10, transition: "transform 0.1s, box-shadow 0.15s" }} onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 12px 36px rgba(16,185,129,0.6)"; }} onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = "0 8px 28px rgba(16,185,129,0.45)"; }}>
+          Start for free — takes 5 minutes →
+        </Link>
       </section>
 
-      <footer style={s.footer}>
-        <div style={s.footerInner}>
-          <div style={s.footerLogo}>
-            <div style={{ ...s.logoMark, width: 28, height: 28, fontSize: "0.75rem" }}>LR</div>
-            <span style={{ fontWeight: 700, color: "#fff" }}>LeadRescue</span>
+      {/* ── FOOTER ──────────────────────────────────────────────────────────── */}
+      <footer style={{ borderTop: "1px solid rgba(255,255,255,0.06)", padding: "40px 24px" }}>
+        <div style={{ maxWidth: 1120, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 28, height: 28, borderRadius: 7, background: "linear-gradient(135deg,#10b981,#059669)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: "0.72rem", color: "#fff" }}>LR</div>
+            <span style={{ fontWeight: 700, color: "#fff", fontSize: "0.95rem" }}>LeadRescue</span>
           </div>
-          <p style={s.footerText}>© {new Date().getFullYear()} LeadRescue. All rights reserved.</p>
-          <div style={s.footerLinks}>
-            <Link to="/privacy" style={s.footerLink}>Privacy</Link>
-            <Link to="/terms" style={s.footerLink}>Terms</Link>
+          <p style={{ color: "#334155", fontSize: "0.82rem", margin: 0 }}>© {new Date().getFullYear()} LeadRescue. All rights reserved.</p>
+          <div style={{ display: "flex", gap: 20 }}>
+            <Link to="/privacy" style={{ color: "#475569", fontSize: "0.82rem", textDecoration: "none", transition: "color 0.15s" }} onMouseEnter={e => e.target.style.color = "#10b981"} onMouseLeave={e => e.target.style.color = "#475569"}>Privacy</Link>
+            <Link to="/terms" style={{ color: "#475569", fontSize: "0.82rem", textDecoration: "none", transition: "color 0.15s" }} onMouseEnter={e => e.target.style.color = "#10b981"} onMouseLeave={e => e.target.style.color = "#475569"}>Terms</Link>
+            <a href="mailto:hello@leadrescue.com" style={{ color: "#475569", fontSize: "0.82rem", textDecoration: "none", transition: "color 0.15s" }} onMouseEnter={e => e.target.style.color = "#10b981"} onMouseLeave={e => e.target.style.color = "#475569"}>Contact</a>
           </div>
         </div>
       </footer>
     </div>
   );
 }
-
-const BLUE = "#2563eb";
-const DARK_BLUE = "#1e40af";
-const PRO_BG = "#0f172a";
-
-const s = {
-  page: { minHeight: "100vh", background: "#ffffff", fontFamily: "'Inter', system-ui, -apple-system, sans-serif", color: "#0f172a", margin: 0 },
-
-  // Nav
-  nav: { position: "sticky", top: 0, zIndex: 100, background: "rgba(255,255,255,0.95)", backdropFilter: "blur(12px)", borderBottom: "1px solid #f1f5f9" },
-  navInner: { maxWidth: 1160, margin: "0 auto", padding: "0 2rem", height: 68, display: "flex", alignItems: "center", justifyContent: "space-between" },
-  logo: { display: "flex", alignItems: "center", gap: "0.6rem", textDecoration: "none" },
-  logoMark: { width: 34, height: 34, borderRadius: 9, background: `linear-gradient(135deg, ${BLUE}, ${DARK_BLUE})`, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800, fontSize: "0.85rem" },
-  logoText: { fontWeight: 800, fontSize: "1.15rem", color: "#0f172a", letterSpacing: "-0.3px" },
-  navLinks: { display: "flex", alignItems: "center", gap: "2rem" },
-  navLink: { color: "#64748b", textDecoration: "none", fontWeight: 500, fontSize: "0.9rem" },
-  loginBtn: { background: "#fff", border: `1.5px solid #e2e8f0`, color: "#0f172a", borderRadius: 8, padding: "0.5rem 1.25rem", cursor: "pointer", fontWeight: 600, fontSize: "0.875rem", transition: "all 0.15s" },
-
-  // Hero
-  hero: { position: "relative", background: PRO_BG, overflow: "hidden", paddingBottom: 0 },
-  heroBg: { position: "absolute", inset: 0, background: "radial-gradient(ellipse 80% 60% at 50% -10%, #1d4ed8 0%, transparent 70%)", opacity: 0.6 },
-  heroContent: { position: "relative", maxWidth: 760, margin: "0 auto", padding: "6rem 2rem 4rem", textAlign: "center" },
-  heroEyebrow: { display: "inline-flex", alignItems: "center", gap: "0.5rem", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 999, padding: "0.4rem 1.1rem", fontSize: "0.8rem", color: "#94a3b8", fontWeight: 500, marginBottom: "2rem" },
-  dot: { width: 6, height: 6, borderRadius: "50%", background: "#4ade80", display: "inline-block" },
-  heroHeadline: { fontSize: "clamp(2.25rem, 5vw, 3.75rem)", fontWeight: 800, lineHeight: 1.1, color: "#fff", margin: "0 0 1.5rem", letterSpacing: "-1.5px" },
-  heroAccent: { background: "linear-gradient(90deg, #60a5fa, #818cf8)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" },
-  heroSub: { fontSize: "1.15rem", lineHeight: 1.75, color: "#94a3b8", margin: "0 0 2.5rem", maxWidth: 580, marginLeft: "auto", marginRight: "auto" },
-  heroCtas: { display: "flex", gap: "1rem", justifyContent: "center", flexWrap: "wrap" },
-  heroPrimary: { background: BLUE, color: "#fff", border: "none", borderRadius: 10, padding: "0.9rem 2rem", fontWeight: 700, fontSize: "1rem", cursor: "pointer", boxShadow: "0 4px 20px rgba(37,99,235,0.4)" },
-  heroSecondary: { color: "#94a3b8", textDecoration: "none", fontWeight: 500, fontSize: "0.95rem", display: "flex", alignItems: "center", padding: "0.9rem 1rem" },
-
-  // Stats bar
-  statsBar: { position: "relative", maxWidth: 1160, margin: "4rem auto 0", padding: "0 2rem", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", borderTop: "1px solid rgba(255,255,255,0.08)" },
-  statItem: { padding: "2rem 1rem", textAlign: "center", borderRight: "1px solid rgba(255,255,255,0.08)" },
-  statValue: { fontSize: "2rem", fontWeight: 800, color: "#fff", letterSpacing: "-1px", marginBottom: "0.35rem" },
-  statLabel: { fontSize: "0.8rem", color: "#64748b", fontWeight: 500 },
-
-  // Features
-  featuresSection: { padding: "6rem 0", background: "#f8fafc" },
-  container: { maxWidth: 1160, margin: "0 auto", padding: "0 2rem" },
-  sectionTag: { display: "inline-block", color: BLUE, fontWeight: 700, fontSize: "0.8rem", letterSpacing: 1, textTransform: "uppercase", marginBottom: "1rem" },
-  sectionTitle: { fontSize: "clamp(1.75rem, 3vw, 2.5rem)", fontWeight: 800, margin: "0 0 1rem", letterSpacing: "-0.75px", maxWidth: 600 },
-  sectionSub: { color: "#64748b", fontSize: "1.05rem", marginBottom: "3.5rem", maxWidth: 520, lineHeight: 1.65 },
-  featureGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "1.5rem" },
-  featureCard: { background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, padding: "2rem", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" },
-  featureIcon: { fontSize: "1.75rem", marginBottom: "1rem" },
-  featureTitle: { fontWeight: 700, fontSize: "1rem", margin: "0 0 0.5rem", color: "#0f172a" },
-  featureDesc: { color: "#64748b", fontSize: "0.9rem", lineHeight: 1.65, margin: 0 },
-
-  // Pricing
-  pricingSection: { padding: "6rem 0", background: "#fff" },
-  pricingGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "1.5rem", alignItems: "center" },
-
-  card: { background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 20, padding: "2.25rem", boxShadow: "0 1px 4px rgba(0,0,0,0.05)", position: "relative" },
-  cardPro: { background: PRO_BG, border: `1.5px solid #1e3a8a`, borderRadius: 20, padding: "2.25rem", boxShadow: "0 20px 60px rgba(15,23,42,0.3)", position: "relative", transform: "scale(1.04)" },
-
-  badge: { position: "absolute", top: -14, left: "50%", transform: "translateX(-50%)", background: "#f59e0b", color: "#fff", borderRadius: 999, padding: "0.3rem 1rem", fontSize: "0.72rem", fontWeight: 700, letterSpacing: 0.5, whiteSpace: "nowrap" },
-
-  cardHeader: { marginBottom: "1.5rem" },
-  planName: { fontWeight: 700, fontSize: "0.85rem", color: "#94a3b8", letterSpacing: 1, textTransform: "uppercase", marginBottom: "1rem" },
-  planNamePro: { fontWeight: 700, fontSize: "0.85rem", color: "#60a5fa", letterSpacing: 1, textTransform: "uppercase", marginBottom: "1rem" },
-  priceRow: { display: "flex", alignItems: "flex-end", gap: 2, marginBottom: "0.75rem" },
-  currency: { fontSize: "1.25rem", fontWeight: 700, color: "#374151", marginBottom: 6 },
-  currencyPro: { fontSize: "1.25rem", fontWeight: 700, color: "#fff", marginBottom: 6 },
-  amount: { fontSize: "3.25rem", fontWeight: 800, lineHeight: 1, color: "#0f172a", letterSpacing: "-2px" },
-  amountPro: { fontSize: "3.25rem", fontWeight: 800, lineHeight: 1, color: "#fff", letterSpacing: "-2px" },
-  period: { fontSize: "1rem", color: "#94a3b8", marginBottom: 8 },
-  periodPro: { fontSize: "1rem", color: "#64748b", marginBottom: 8 },
-  tagline: { fontSize: "0.875rem", color: "#64748b", lineHeight: 1.55, margin: 0 },
-  taglinePro: { fontSize: "0.875rem", color: "#94a3b8", lineHeight: 1.55, margin: 0 },
-
-  divider: { height: 1, background: "#f1f5f9", margin: "1.5rem 0" },
-  dividerPro: { height: 1, background: "rgba(255,255,255,0.08)", margin: "1.5rem 0" },
-
-  featureList: { listStyle: "none", padding: 0, margin: "0 0 2rem", display: "flex", flexDirection: "column", gap: "0.75rem" },
-  featureItem: { display: "flex", alignItems: "flex-start", gap: "0.75rem" },
-  check: { color: BLUE, fontWeight: 800, flexShrink: 0, fontSize: "0.9rem", marginTop: 1 },
-  checkPro: { color: "#4ade80", fontWeight: 800, flexShrink: 0, fontSize: "0.9rem", marginTop: 1 },
-  featureText: { fontSize: "0.9rem", color: "#374151", lineHeight: 1.4 },
-  featureTextPro: { fontSize: "0.9rem", color: "#e2e8f0", lineHeight: 1.4 },
-
-  cta: { width: "100%", padding: "0.9rem", borderRadius: 10, border: `2px solid #e2e8f0`, background: "#fff", color: "#0f172a", fontWeight: 700, fontSize: "0.95rem", cursor: "pointer" },
-  ctaPro: { width: "100%", padding: "0.9rem", borderRadius: 10, border: "none", background: BLUE, color: "#fff", fontWeight: 700, fontSize: "0.95rem", cursor: "pointer", boxShadow: "0 4px 16px rgba(37,99,235,0.4)" },
-  trialNote: { textAlign: "center", fontSize: "0.78rem", color: "#475569", margin: "1rem 0 0" },
-
-  // Bottom CTA
-  bottomCta: { background: `linear-gradient(135deg, ${BLUE} 0%, ${DARK_BLUE} 100%)`, padding: "5rem 2rem", textAlign: "center" },
-  bottomTitle: { fontSize: "clamp(1.75rem, 3vw, 2.5rem)", fontWeight: 800, color: "#fff", margin: "0 0 1rem", letterSpacing: "-0.75px" },
-  bottomSub: { color: "rgba(255,255,255,0.75)", fontSize: "1.05rem", margin: "0 0 2.5rem" },
-  bottomBtn: { background: "#fff", color: BLUE, border: "none", borderRadius: 10, padding: "1rem 2.5rem", fontWeight: 700, fontSize: "1rem", cursor: "pointer", boxShadow: "0 4px 20px rgba(0,0,0,0.15)" },
-
-  // Footer
-  footer: { background: "#0f172a", padding: "2.5rem 2rem" },
-  footerInner: { maxWidth: 1160, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem" },
-  footerLogo: { display: "flex", alignItems: "center", gap: "0.5rem" },
-  footerText: { color: "#475569", fontSize: "0.85rem", margin: 0 },
-  footerLinks: { display: "flex", gap: "1.5rem" },
-  footerLink: { color: "#475569", textDecoration: "none", fontSize: "0.85rem" },
-};

@@ -83,6 +83,24 @@ export async function sendVerificationEmail({ to, name, link }) {
   });
 }
 
+export async function sendInviteEmail({ to, name, businessName, inviterName, link }) {
+  const greeting = name ? `Hi ${name},` : "Hi,";
+  return deliver({
+    to,
+    subject: `${inviterName} invited you to join ${businessName} on LeadRescue`,
+    logLine: `Invite link: ${link}`,
+    text: `${greeting}\n\n${inviterName} has invited you to join ${businessName} on LeadRescue — an AI lead recovery platform.\n\nAccept your invitation here:\n${link}\n\nThis link expires in 72 hours.`,
+    html: layout(
+      `You're invited to join ${businessName}`,
+      `<p>${greeting}</p>
+       <p><strong>${inviterName}</strong> has invited you to join <strong>${businessName}</strong> on LeadRescue.</p>
+       <p>Click below to set up your account and start managing leads together.</p>
+       <p><a href="${link}" style="display:inline-block; background:#0f766e; color:#fff; padding:12px 22px; border-radius:8px; text-decoration:none; font-weight:700;">Accept invitation</a></p>
+       <p style="color:#6b7280; font-size:13px;">This link expires in 72 hours. If you didn't expect this, you can safely ignore it.</p>`
+    )
+  });
+}
+
 export async function sendRenewalReminderEmail({ to, name, renewalDate, plan, amountCents }) {
   const greeting = name ? `Hi ${name},` : "Hi,";
   const planLabel = { starter: "Starter", pro: "Pro", scale: "Scale" }[plan] || (plan || "your");

@@ -17,6 +17,7 @@ import CalendarPage from "./pages/Calendar.jsx";
 import SmsSetup from "./pages/SmsSetup.jsx";
 import Privacy from "./pages/Privacy.jsx";
 import Terms from "./pages/Terms.jsx";
+import AcceptInvite from "./pages/AcceptInvite.jsx";
 import CustomInvoice from "./pages/CustomInvoice.jsx";
 
 // Redirects logged-in, subscribed users to the app; unsubscribed to /subscribe
@@ -76,6 +77,7 @@ export default function App() {
       <Route path="/subscribe" element={<Subscribe />} />
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/terms" element={<Terms />} />
+      <Route path="/accept-invite" element={<AcceptInvite />} />
       <Route path="/signup" element={<Navigate to="/register" replace />} />
       <Route element={<ProtectedRoute />}>
         <Route path="/dashboard" element={<Dashboard />} />

@@ -21,7 +21,17 @@ export async function requireAuth(req, res, next) {
     }
 
     req.user = user;
-    req.business = user.business;
+    // Owners have their own business; staff members are linked via staffBusinessId
+    if (user.business) {
+      req.business = user.business;
+    } else if (user.staffBusinessId) {
+      req.business = await prisma.business.findUnique({
+        where: { id: user.staffBusinessId },
+        include: { serviceTypes: true, subscriptionPlan: true }
+      });
+    } else {
+      req.business = null;
+    }
     return next();
   } catch (error) {
     return res.status(401).json({ error: "Invalid authorization token" });

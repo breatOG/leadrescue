@@ -52,6 +52,8 @@ model User {
   stripeSubscriptionId String?
   subscriptionStatus   String      @default("inactive")
   subscriptionPlan     String?
+  staffBusinessId      String?
+  staffBusiness        Business?   @relation("staffMembers", fields: [staffBusinessId], references: [id])
   business             Business?
   authTokens           AuthToken[]
   createdAt            DateTime    @default(now())
@@ -88,6 +90,8 @@ model Business {
   id                     String                 @id @default(cuid())
   ownerId                String                 @unique
   owner                  User                   @relation(fields: [ownerId], references: [id])
+  staffMembers           User[]                 @relation("staffMembers")
+  invitations            Invitation[]
   subscriptionPlanId     String?
   subscriptionPlan       SubscriptionPlan?      @relation(fields: [subscriptionPlanId], references: [id])
   name                   String
@@ -186,6 +190,20 @@ model Appointment {
   updatedAt    DateTime          @updatedAt
 
   @@index([businessId, startAt])
+}
+
+model Invitation {
+  id          String    @id @default(cuid())
+  businessId  String
+  business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  email       String
+  name        String?
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([businessId])
 }
 
 model WebhookLog {
