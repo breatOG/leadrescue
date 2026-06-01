@@ -1,6 +1,53 @@
 import OpenAI from "openai";
 import { getAvailableSlots } from "./schedulingService.js";
 
+export async function runVoiceAiTurn({ business, lead, messages }) {
+  const conversationHistory = messages
+    .filter((m) => m.body !== "[call started]")
+    .map((m) => ({ role: m.direction === "inbound" ? "user" : "assistant", content: m.body }));
+
+  const serviceTypes = business.serviceTypes?.map((t) => t.name).join(", ") || "general service";
+  const areas = business.serviceAreas?.join(", ") || "local area";
+
+  const system = `You are a warm, natural-sounding receptionist answering a phone call for ${business.name}, a ${business.industryType || "contractor"} company.
+
+Have a genuine conversation. Collect these details naturally — one at a time, never all at once:
+• Customer's name
+• What the problem is and how bad (severity)
+• Their address or ZIP code
+• How urgent: emergency, today, this week, or flexible
+• Preferred appointment window (if not emergency)
+
+Service areas: ${areas}
+Services offered: ${serviceTypes}
+
+STRICT RULES:
+- Max 1-2 SHORT sentences per response. This is a phone call — brevity matters.
+- Never list questions. Ask one thing, wait for the answer.
+- Sound like a real person: warm, natural, casual. Not scripted.
+- If they mention gas leak, flooding, fire, electrical sparks, or structural collapse — say: call emergency services now, and that you are alerting the contractor immediately.
+- Once you have name, problem, and address — give a brief summary and say the contractor will follow up soon.
+- Never repeat a question for something they already told you.`;
+
+  if (!process.env.OPENAI_API_KEY) {
+    const known = { name: lead.customerName, address: lead.address || lead.zipCode, issue: lead.issueDescription };
+    if (!known.name) return "Hi there! What's your name?";
+    if (!known.issue) return `Thanks ${known.name}. What's the problem you're dealing with?`;
+    if (!known.address) return "And what's the address or ZIP code for the job?";
+    return `Got it. I have everything I need. The team at ${business.name} will follow up with you soon.`;
+  }
+
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [{ role: "system", content: system }, ...conversationHistory],
+    max_tokens: 80,
+    temperature: 0.85
+  });
+
+  return completion.choices[0].message.content.trim();
+}
+
 const EMERGENCY_TERMS = ["gas leak", "flood", "flooding", "sparks", "fire", "roof collapse", "collapsed", "burst pipe"];
 const HIGH_TERMS = ["no heat", "no ac", "leaking", "leak", "urgent", "today", "asap", "broken"];
 

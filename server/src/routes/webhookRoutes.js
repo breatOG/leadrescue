@@ -1,7 +1,7 @@
 import express from "express";
 import asyncHandler from "express-async-handler";
 import { prisma } from "../prisma/client.js";
-import { runAiLeadAgent } from "../services/aiLeadAgent.js";
+import { runAiLeadAgent, runVoiceAiTurn } from "../services/aiLeadAgent.js";
 import { bookAppointment, getAvailableSlots } from "../services/schedulingService.js";
 import { notifyContractor } from "../services/notificationService.js";
 import { sendSms } from "../services/twilioService.js";
@@ -175,18 +175,18 @@ router.post(
       data: { leadId: updatedLead.id, direction: "inbound", channel: "voice", body: "[call started]" }
     });
     const initMessages = await prisma.message.findMany({ where: { leadId: updatedLead.id }, orderBy: { createdAt: "asc" } });
-    const aiGreeting = await runAiLeadAgent({ business, lead: updatedLead, messages: initMessages });
+    const greeting = await runVoiceAiTurn({ business, lead: updatedLead, messages: initMessages });
     await prisma.message.create({
-      data: { leadId: updatedLead.id, direction: "outbound", channel: "voice", body: aiGreeting.nextMessageToCustomer }
+      data: { leadId: updatedLead.id, direction: "outbound", channel: "voice", body: greeting }
     });
 
     const gatherUrl = `/webhooks/twilio/voice-gather?leadId=${updatedLead.id}&amp;businessId=${business.id}`;
     return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Gather input="speech" action="${gatherUrl}" method="POST" speechTimeout="3" timeout="10" language="en-US">
-    <Say voice="alice">${esc(aiGreeting.nextMessageToCustomer)}</Say>
+  <Gather input="speech" action="${gatherUrl}" method="POST" speechTimeout="1" timeout="10" language="en-US">
+    <Say voice="Polly.Joanna-Neural">${esc(greeting)}</Say>
   </Gather>
-  <Say voice="alice">We didn't catch that. Please call back and we will be happy to help.</Say>
+  <Say voice="Polly.Joanna-Neural">Sorry, I didn't catch that. Please call us back and we will be happy to help.</Say>
 </Response>`);
   })
 );
@@ -213,35 +213,24 @@ router.post(
     }
 
     const messages = await prisma.message.findMany({ where: { leadId: lead.id }, orderBy: { createdAt: "asc" } });
-    const aiResult = await runAiLeadAgent({ business, lead, messages });
+    const aiReply = await runVoiceAiTurn({ business, lead, messages });
 
     await prisma.message.create({
-      data: { leadId: lead.id, direction: "outbound", channel: "voice", body: aiResult.nextMessageToCustomer }
+      data: { leadId: lead.id, direction: "outbound", channel: "voice", body: aiReply }
     });
-
-    const updatedLead = await prisma.lead.update({
+    await prisma.lead.update({
       where: { id: lead.id },
-      data: {
-        ...aiResult.extractedFields,
-        priority: aiResult.leadPriority,
-        status: aiResult.leadStatus,
-        aiSummary: aiResult.contractorSummary,
-        lastMessage: aiResult.nextMessageToCustomer
-      }
+      data: { lastMessage: aiReply }
     });
-
-    if (["emergency", "high"].includes(updatedLead.priority) || updatedLead.status === "qualified") {
-      await notifyContractor({ business, lead: updatedLead, summary: aiResult.contractorSummary });
-    }
 
     const gatherUrl = `/webhooks/twilio/voice-gather?leadId=${lead.id}&amp;businessId=${business.id}`;
-    const aiSay = esc(aiResult.nextMessageToCustomer);
+    const aiSay = esc(aiReply);
     return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Gather input="speech" action="${gatherUrl}" method="POST" speechTimeout="3" timeout="10" language="en-US">
-    <Say voice="alice">${aiSay}</Say>
+  <Gather input="speech" action="${gatherUrl}" method="POST" speechTimeout="1" timeout="10" language="en-US">
+    <Say voice="Polly.Joanna-Neural">${aiSay}</Say>
   </Gather>
-  <Say voice="alice">${aiSay} Please call back if you need anything else.</Say>
+  <Say voice="Polly.Joanna-Neural">Sorry, I didn't catch that. Please call us back and we will be happy to help.</Say>
 </Response>`);
   })
 );
