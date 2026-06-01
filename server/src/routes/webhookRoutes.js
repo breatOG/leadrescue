@@ -10,6 +10,20 @@ function esc(str) {
   return String(str ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+async function saveExtractedFields(leadId, extracted = {}) {
+  const update = {};
+  if (extracted.customerName) update.customerName = extracted.customerName;
+  if (extracted.jobType) update.jobType = extracted.jobType;
+  if (extracted.issueDescription) update.issueDescription = extracted.issueDescription;
+  if (extracted.urgency) update.urgency = extracted.urgency;
+  if (extracted.address) update.address = extracted.address;
+  if (extracted.zipCode) update.zipCode = extracted.zipCode;
+  if (extracted.preferredAppointmentTime) update.preferredAppointmentTime = extracted.preferredAppointmentTime;
+  if (Object.keys(update).length > 0) {
+    await prisma.lead.update({ where: { id: leadId }, data: update });
+  }
+}
+
 const router = express.Router();
 
 async function findBusinessByTwilioNumber(number) {
@@ -174,11 +188,15 @@ router.post(
     await prisma.message.create({
       data: { leadId: updatedLead.id, direction: "inbound", channel: "voice", body: "[call started]" }
     });
-    const initMessages = await prisma.message.findMany({ where: { leadId: updatedLead.id }, orderBy: { createdAt: "asc" } });
-    const { text: greeting } = await runVoiceAiTurn({ business, lead: updatedLead, messages: initMessages });
+    const [initMessages, slots] = await Promise.all([
+      prisma.message.findMany({ where: { leadId: updatedLead.id }, orderBy: { createdAt: "asc" } }),
+      getAvailableSlots(business.id)
+    ]);
+    const { text: greeting, extracted } = await runVoiceAiTurn({ business, lead: updatedLead, messages: initMessages, slots });
     await prisma.message.create({
       data: { leadId: updatedLead.id, direction: "outbound", channel: "voice", body: greeting }
     });
+    await saveExtractedFields(updatedLead.id, extracted);
 
     const gatherUrl = `/webhooks/twilio/voice-gather?leadId=${updatedLead.id}&amp;businessId=${business.id}`;
     return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
@@ -212,18 +230,32 @@ router.post(
       });
     }
 
-    const messages = await prisma.message.findMany({ where: { leadId: lead.id }, orderBy: { createdAt: "asc" } });
-    const { text: aiReply, done } = await runVoiceAiTurn({ business, lead, messages });
+    const [messages, slots] = await Promise.all([
+      prisma.message.findMany({ where: { leadId: lead.id }, orderBy: { createdAt: "asc" } }),
+      getAvailableSlots(business.id)
+    ]);
+    const { text: aiReply, done, extracted } = await runVoiceAiTurn({ business, lead, messages, slots });
 
     await prisma.message.create({
       data: { leadId: lead.id, direction: "outbound", channel: "voice", body: aiReply }
     });
-    await prisma.lead.update({
-      where: { id: lead.id },
-      data: { lastMessage: aiReply }
-    });
+    await saveExtractedFields(lead.id, extracted);
+    await prisma.lead.update({ where: { id: lead.id }, data: { lastMessage: aiReply } });
 
     if (done) {
+      const finalMessages = await prisma.message.findMany({ where: { leadId: lead.id }, orderBy: { createdAt: "asc" } });
+      const finalLead = await prisma.lead.findUnique({ where: { id: lead.id } });
+      const summary = await runAiLeadAgent({ business, lead: finalLead, messages: finalMessages });
+      await prisma.lead.update({
+        where: { id: lead.id },
+        data: {
+          status: "qualified",
+          priority: summary.leadPriority,
+          aiSummary: summary.contractorSummary,
+          ...summary.extractedFields
+        }
+      });
+      await notifyContractor({ business, lead: { ...finalLead, status: "qualified" }, summary: summary.contractorSummary });
       return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="Google.en-US-Neural2-F">${esc(aiReply)}</Say>

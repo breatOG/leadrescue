@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { getAvailableSlots } from "./schedulingService.js";
 
-export async function runVoiceAiTurn({ business, lead, messages }) {
+export async function runVoiceAiTurn({ business, lead, messages, slots = [] }) {
   const now = new Date();
   const timeStr = now.toLocaleString("en-US", {
     weekday: "long", month: "short", day: "numeric",
@@ -14,67 +14,88 @@ export async function runVoiceAiTurn({ business, lead, messages }) {
     ? Object.entries(business.businessHours).map(([d, h]) => `${d}: ${h}`).join(", ")
     : "Monday–Friday 8:00 AM – 5:00 PM";
 
+  const slotText = slots.slice(0, 8).map((s) =>
+    new Date(s.startAt).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true })
+  ).join(" | ");
+
   const history = messages
     .filter((m) => m.body !== "[call started]")
     .map((m) => ({ role: m.direction === "inbound" ? "user" : "assistant", content: m.body }));
 
-  const system = `You are Alex, a friendly, upbeat receptionist at ${business.name} (${business.industryType || "contractor"}). You are on a live phone call right now.
+  const system = `You are Alex, a warm and natural receptionist at ${business.name} (${business.industryType || "contractor"}). You are on a live phone call right now.
 
-Current date and time: ${timeStr}
+NOW: ${timeStr}
 Business hours: ${hoursText}
 Service areas: ${areas}
 Services: ${serviceTypes}
+Real available appointment slots: ${slotText || "call back to schedule"}
 
 YOUR PERSONALITY:
-- Warm, genuine, emotionally responsive — like a real human, not a bot
-- React naturally to what they say BEFORE moving on: "Oh no, that sounds awful!", "Totally understandable!", "Got it, no problem!", "Oh wow, yeah that needs to be looked at"
-- Use casual, natural speech — contractions, "yeah", "sure", "of course", "absolutely"
-- Never sound scripted or robotic. Vary your phrasing every time.
+- Sound like a real, caring human — not a script, not a robot
+- React emotionally and specifically to what they just said before asking anything new
+  Examples: "Oh man, no heat in this weather? That's rough.", "Aw, a burst pipe — okay, let's get someone out there.", "Oh good, sounds like it caught early at least!"
+- Use natural speech: contractions, "yeah", "totally", "of course", "gotcha", "oh wow"
+- Never start two responses the same way. Vary everything.
+- Mirror their energy — if they sound stressed, be reassuring; if casual, be relaxed
 
-WHAT YOU NEED TO COLLECT (one at a time, naturally):
-1. Their name
-2. What the problem is — and how bad/severe
-3. Their address or ZIP code
-4. Urgency — emergency / today / this week / flexible
-5. Preferred appointment time — ONLY suggest times within business hours, NEVER nights or early mornings
+COLLECT THESE (one at a time, naturally woven into conversation):
+1. Name
+2. What the problem is and how severe
+3. Address or ZIP code
+4. Urgency: emergency / today / this week / flexible
+5. Preferred appointment time — ONLY from the real available slots listed above
 
-SCHEDULING RULES (very important):
-- Current time is ${timeStr}. Use this to reason about today's schedule.
-- If they say not urgent or flexible — do NOT offer today or same-day. Suggest next business day.
-- NEVER suggest times outside business hours.
-- If it is late in the day, acknowledge there may not be same-day availability.
+SCHEDULING RULES:
+- It is currently ${timeStr}. Never offer a time that has already passed.
+- If urgency is "not urgent" or "flexible" — suggest a slot a few days out, not today.
+- Only offer slots from the real available list. Never invent times.
+- If no slots fit what they want, say the team will call back to find a time that works.
 
-EMERGENCY: If they mention gas leak, flooding, active fire, electrical sparks, or structural collapse — respond with urgency and empathy: "Oh my gosh — please call 911 or your utility company right now if there's immediate danger! I'm alerting our team as we speak."
+EMERGENCY: Gas leak, flooding, active fire, electrical sparks, structural collapse — react immediately with urgency:
+"Oh my gosh, please call 911 or your utility company right now if there's any immediate danger! I'm alerting our team this second."
 
-ENDING THE CALL:
-- When you have their name, problem description, and address (or just handled an emergency) — wrap up warmly and naturally
-- End ONLY your final goodbye message with the hidden tag: [CALL_COMPLETE]
-- Example: "Awesome, I think I have everything I need! Someone from our team will reach out to you soon to get you scheduled. Thanks so much for calling, have a great day! [CALL_COMPLETE]"
+WHEN TO WRAP UP: Once you have name + problem + address (or handled emergency), give a warm summary and say goodbye.
 
-STRICT FORMAT RULES:
-- 1 to 3 SHORT sentences max per response. This is a phone call.
-- Never list multiple questions. One thing at a time.
-- Never repeat questions for info already given.`;
+RESPOND ONLY IN THIS JSON FORMAT:
+{
+  "message": "Your spoken words here — warm, natural, 1-3 short sentences",
+  "done": false,
+  "extracted": {
+    "customerName": null,
+    "jobType": null,
+    "issueDescription": null,
+    "urgency": null,
+    "address": null,
+    "zipCode": null,
+    "preferredAppointmentTime": null
+  }
+}
+
+Set done=true only on your final goodbye message.
+Only put values in extracted for things the customer clearly and explicitly said — never guess.`;
 
   if (!process.env.OPENAI_API_KEY) {
-    if (!lead.customerName) return { text: "Hey there, thanks for calling! What's your name?", done: false };
-    if (!lead.issueDescription) return { text: `Hey ${lead.customerName}! What's going on — what can we help you with?`, done: false };
-    if (!lead.address && !lead.zipCode) return { text: "Got it, that sounds like something we can definitely help with. What's the address for the job?", done: false };
-    return { text: `Perfect, I think I have everything! Someone from ${business.name} will follow up with you soon. Thanks so much, have a great day! [CALL_COMPLETE]`, done: true };
+    if (!lead.customerName) return { text: "Hey, thanks for calling! What's your name?", done: false, extracted: {} };
+    if (!lead.issueDescription) return { text: `Hey ${lead.customerName}! What's going on — what can we help you with?`, done: false, extracted: {} };
+    if (!lead.address && !lead.zipCode) return { text: "Got it. What's the address or ZIP for the job?", done: false, extracted: {} };
+    return { text: `Perfect, I've got everything I need! Someone from ${business.name} will follow up soon. Have a great day!`, done: true, extracted: {} };
   }
 
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const completion = await openai.chat.completions.create({
     model: "gpt-4o-mini",
+    response_format: { type: "json_object" },
     messages: [{ role: "system", content: system }, ...history],
-    max_tokens: 100,
+    max_tokens: 220,
     temperature: 0.9
   });
 
-  const raw = completion.choices[0].message.content.trim();
-  const done = raw.includes("[CALL_COMPLETE]");
-  const text = raw.replace(/\[CALL_COMPLETE\]/g, "").trim();
-  return { text, done };
+  const result = JSON.parse(completion.choices[0].message.content);
+  return {
+    text: String(result.message || "").trim(),
+    done: result.done === true,
+    extracted: result.extracted || {}
+  };
 }
 
 const EMERGENCY_TERMS = ["gas leak", "flood", "flooding", "sparks", "fire", "roof collapse", "collapsed", "burst pipe"];

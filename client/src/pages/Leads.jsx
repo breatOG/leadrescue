@@ -32,8 +32,9 @@ export default function Leads() {
               <tr>
                 <th>Status</th>
                 <th>Priority</th>
-                <th>Customer phone</th>
-                <th>Job type</th>
+                <th>Customer</th>
+                <th>Job / Issue</th>
+                <th>Urgency</th>
                 <th>Last message</th>
                 <th>Created</th>
               </tr>
@@ -41,10 +42,15 @@ export default function Leads() {
             <tbody>
               {leads.map((lead) => (
                 <tr key={lead.id}>
-                  <td><Link to={`/leads/${lead.id}`}><Badge>{lead.status}</Badge></Link></td>
+                  <td><Link to={`/leads/${lead.id}`}><Badge>{lead.status.replace("_", " ")}</Badge></Link></td>
                   <td><Badge tone={toneForPriority(lead.priority)}>{lead.priority}</Badge></td>
-                  <td>{lead.customerPhone}</td>
-                  <td>{lead.jobType || "Unqualified"}</td>
+                  <td>
+                    <span title={lead.source === "missed_call" ? "Voice call" : "SMS"}>{lead.source === "missed_call" ? "📞 " : "💬 "}</span>
+                    {lead.customerName || lead.customerPhone}
+                    {lead.customerName && <span style={{color:"var(--muted)",fontSize:"0.8em",display:"block"}}>{lead.customerPhone}</span>}
+                  </td>
+                  <td>{lead.jobType || <span style={{color:"var(--muted)"}}>Unqualified</span>}</td>
+                  <td>{lead.urgency || <span style={{color:"var(--muted)"}}>—</span>}</td>
                   <td className="truncate">{lead.lastMessage || "No messages yet"}</td>
                   <td>{new Date(lead.createdAt).toLocaleDateString()}</td>
                 </tr>

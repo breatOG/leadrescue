@@ -3,6 +3,22 @@ import { useParams } from "react-router-dom";
 import { api } from "../api/client.js";
 import { Badge } from "../components/Layout.jsx";
 
+function Field({ label, value }) {
+  if (!value) return null;
+  return (
+    <div className="detail-field">
+      <span className="detail-label">{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function channelIcon(channel) {
+  if (channel === "voice") return "📞";
+  if (channel === "sms") return "💬";
+  return "📋";
+}
+
 export default function LeadDetail() {
   const { id } = useParams();
   const [lead, setLead] = useState(null);
@@ -15,9 +31,7 @@ export default function LeadDetail() {
     setNotes(data.lead.manualNotes || "");
   }
 
-  useEffect(() => {
-    loadLead();
-  }, [id]);
+  useEffect(() => { loadLead(); }, [id]);
 
   async function saveNotes() {
     await api(`/api/leads/${id}`, { method: "PATCH", body: { manualNotes: notes } });
@@ -39,48 +53,73 @@ export default function LeadDetail() {
 
   if (!lead) return <div className="page"><h1>Lead</h1><p>Loading...</p></div>;
 
+  const visibleMessages = lead.messages.filter((m) => m.body !== "[call started]");
+
   return (
     <div className="page detail-grid">
       <section className="panel">
         <div className="page-header compact">
           <div>
-            <p className="eyebrow">Lead detail</p>
+            <p className="eyebrow">{lead.source === "missed_call" ? "📞 Voice lead" : "💬 SMS lead"} · Lead detail</p>
             <h1>{lead.customerName || lead.customerPhone}</h1>
           </div>
           <button className="ghost" onClick={closeLead}>Mark closed</button>
         </div>
+
         <div className="field-grid">
-          <span>Status <Badge>{lead.status}</Badge></span>
+          <span>Status <Badge>{lead.status.replace("_", " ")}</Badge></span>
           <span>Priority <Badge tone={lead.priority}>{lead.priority}</Badge></span>
-          <span>Phone <strong>{lead.customerPhone}</strong></span>
-          <span>Job type <strong>{lead.jobType || "Unknown"}</strong></span>
-          <span>ZIP <strong>{lead.zipCode || "Unknown"}</strong></span>
-          <span>Urgency <strong>{lead.urgency || "Unknown"}</strong></span>
+          <span>Source <Badge>{lead.source === "missed_call" ? "Voice call" : lead.source}</Badge></span>
         </div>
+
+        <h2>Customer info</h2>
+        <div className="detail-fields">
+          <Field label="Name" value={lead.customerName} />
+          <Field label="Phone" value={lead.customerPhone} />
+          <Field label="Address" value={lead.address} />
+          <Field label="ZIP code" value={lead.zipCode} />
+        </div>
+
+        <h2>Job details</h2>
+        <div className="detail-fields">
+          <Field label="Job type" value={lead.jobType} />
+          <Field label="Issue" value={lead.issueDescription} />
+          <Field label="Urgency" value={lead.urgency} />
+          <Field label="Preferred appointment" value={lead.preferredAppointmentTime} />
+          <Field label="Photos available" value={lead.photosAvailable != null ? (lead.photosAvailable ? "Yes" : "No") : null} />
+        </div>
+
         <h2>AI summary</h2>
         <p className="summary">{lead.aiSummary || "The AI is still qualifying this lead."}</p>
-        <h2>Appointment details</h2>
+
+        <h2>Appointments</h2>
         {lead.appointments.length ? (
-          lead.appointments.map((appointment) => (
-            <p key={appointment.id}>{new Date(appointment.startAt).toLocaleString()} to {new Date(appointment.endAt).toLocaleTimeString()}</p>
+          lead.appointments.map((apt) => (
+            <div key={apt.id} className="detail-field">
+              <span className="detail-label">{apt.status}</span>
+              <strong>{new Date(apt.startAt).toLocaleString()} – {new Date(apt.endAt).toLocaleTimeString()}</strong>
+              {apt.notes && <p className="apt-notes">{apt.notes}</p>}
+            </div>
           ))
         ) : (
           <p>No appointment booked yet.</p>
         )}
-        <h2>Manual notes</h2>
+
+        <h2>Notes</h2>
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows="5" />
         <button className="button" onClick={saveNotes}>Save notes</button>
       </section>
 
       <section className="panel">
-        <h2>Conversation history</h2>
+        <h2>Conversation</h2>
         <div className="message-thread">
-          {lead.messages.map((message) => (
+          {visibleMessages.map((message) => (
             <div className={`message ${message.direction}`} key={message.id}>
-              <small>{message.channel} · {message.direction} · {new Date(message.createdAt).toLocaleString()}</small>
+              <small>{channelIcon(message.channel)} {message.channel} · {message.direction} · {new Date(message.createdAt).toLocaleString()}</small>
               <p>{message.body}</p>
             </div>
           ))}
+          {visibleMessages.length === 0 && <p>No messages yet.</p>}
         </div>
         <form className="manual-message" onSubmit={sendManualMessage}>
           <textarea value={manualMessage} onChange={(e) => setManualMessage(e.target.value)} placeholder="Send a manual SMS..." rows="3" />
