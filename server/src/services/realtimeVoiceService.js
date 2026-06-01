@@ -209,25 +209,23 @@ ${appointments || "No appointment booked yet."}`;
 function updateRealtimeSession(openAiWs, callerMemory = "") {
   if (openAiWs.readyState !== WebSocket.OPEN) return;
 
-  const voice = process.env.OPENAI_REALTIME_VOICE || "alloy";
+  const voice = process.env.OPENAI_REALTIME_VOICE || "shimmer";
 
   sendJson(openAiWs, {
     type: "session.update",
     session: {
       type: "realtime",
-      modalities: ["audio", "text"],
+      output_modalities: ["audio", "text"],
       instructions: `${DEFAULT_INSTRUCTIONS}\n\n${callerMemory}`,
-      voice,
-      input_audio_format: "g711_ulaw",
-      output_audio_format: "pcm16",
-      input_audio_transcription: {
-        model: "whisper-1"
-      },
-      turn_detection: {
-        type: "server_vad",
-        threshold: 0.5,
-        prefix_padding_ms: 300,
-        silence_duration_ms: 600
+      audio: {
+        input: {
+          format: { type: "audio/pcmu", rate: 8000 },
+          turn_detection: { type: "semantic_vad" }
+        },
+        output: {
+          format: { type: "audio/pcm" },
+          voice
+        }
       }
     }
   });
