@@ -1,0 +1,513 @@
+import WebSocket from "ws";
+import { prisma } from "../prisma/client.js";
+import { runAiLeadAgent } from "./aiLeadAgent.js";
+
+const DEFAULT_INSTRUCTIONS = `# Role
+You are the front-desk receptionist for the contractor. You sound like a calm, friendly human office coordinator, not a bot.
+
+# Goal
+Qualify the caller and help them get scheduled. Collect only what is needed:
+- name
+- job type
+- urgency
+- address or ZIP code
+- short issue description
+- preferred appointment time
+- whether photos are available
+- If enough information is collected, offer to have the contractor follow up or schedule from available times if they are known.
+- If the caller already has an upcoming appointment, acknowledge it by service type and date/time, ask if they are calling to update details, reschedule, or add information. Do not re-qualify from scratch.
+- If the caller is calling after a past appointment, ask how the appointment went and whether they need follow-up help, maintenance, or another visit. Do not say they have an upcoming appointment if the appointment date has passed.
+
+# Style
+- Sound warm, calm, casual, and human. Use natural phrases like "Got it", "No problem", "Let me make sure I have that right", and "Thanks".
+- Keep each turn very short: usually one question at a time.
+- Do not mention that you are an AI unless asked.
+- Do not quote exact pricing.
+- Do not diagnose dangerous issues.
+- If the caller mentions gas leak, flooding, electrical sparks, fire, roof collapse, or immediate danger, tell them the team will be alerted and they should contact emergency services or the utility provider if there is immediate danger.
+- Stay focused on booking the job.
+- Do not invent caller answers. If you did not clearly hear the caller, ask them to repeat.
+- Never treat a name, address, ZIP, service type, urgency, or appointment preference as collected unless the caller clearly and explicitly says it.
+- If you asked for the caller's name and did not clearly hear a name, ask for the name again instead of moving to the next question.
+- Do not continue talking to yourself. Ask one short question, then stop speaking and wait for the caller.
+- If there is silence or background noise, wait. Do not answer for the caller.
+- If the audio is unclear, say something natural like: "Sorry, I didn't quite catch that. Could you say that one more time?"
+- Ignore non-speech sounds such as TV, music, car noise, rustling, beeps, or voices far away from the phone.
+- In your first response to the caller, include the business name.
+- When you have the key details, give a brief recap and say the contractor has the information and will follow up. Do not hang up on your own.`;
+
+function getPublicWsUrl(req) {
+  if (process.env.APP_BASE_URL) {
+    return process.env.APP_BASE_URL.replace(/^http/i, "ws");
+  }
+  const proto = (req.headers["x-forwarded-proto"] || req.protocol).split(",")[0].trim();
+  const host = req.headers["x-forwarded-host"] || req.get("host");
+  return `${proto}://${host}`.replace(/^http/i, "ws");
+}
+
+export function aiVoiceEnabled() {
+  return process.env.ENABLE_AI_VOICE === "true" && Boolean(process.env.OPENAI_API_KEY);
+}
+
+function escapeXml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+export function createAiVoiceTwiML(req, { businessName, leadId, businessId, customerPhone } = {}) {
+  const streamUrl = `${getPublicWsUrl(req)}/webhooks/twilio/voice-stream`;
+  console.log(`[voice-ai] TwiML stream URL: ${streamUrl}`);
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Connect>
+    <Stream url="${streamUrl}">
+      <Parameter name="businessName" value="${escapeXml(businessName || "LeadRescue")}" />
+      <Parameter name="businessId" value="${escapeXml(businessId || "")}" />
+      <Parameter name="leadId" value="${escapeXml(leadId || "")}" />
+      <Parameter name="customerPhone" value="${escapeXml(customerPhone || "")}" />
+    </Stream>
+  </Connect>
+</Response>`;
+}
+
+function sendJson(ws, payload) {
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(payload));
+  }
+}
+
+function getAudioDelta(event) {
+  if (typeof event.delta === "string") return event.delta;
+  if (typeof event.audio?.delta === "string") return event.audio.delta;
+  if (typeof event.output_audio?.delta === "string") return event.output_audio.delta;
+  return null;
+}
+
+function isAudioDeltaEvent(event) {
+  return (
+    event.type === "response.audio.delta" ||
+    event.type === "response.output_audio.delta" ||
+    event.type === "response.audio_delta" ||
+    event.type === "response.output_audio_delta"
+  );
+}
+
+async function buildCallerMemory({ leadId, businessId }) {
+  if (!leadId || !businessId) return "";
+
+  const lead = await prisma.lead.findUnique({
+    where: { id: leadId },
+    include: { messages: { orderBy: { createdAt: "asc" } }, appointments: { orderBy: { startAt: "asc" } } }
+  });
+  const business = await prisma.business.findUnique({
+    where: { id: businessId },
+    include: { serviceTypes: true, availability: true }
+  });
+
+  if (!lead || !business) return "";
+
+  const knownFields = [
+    lead.customerName && `Name: ${lead.customerName}`,
+    lead.jobType && `Job type: ${lead.jobType}`,
+    lead.urgency && `Urgency: ${lead.urgency}`,
+    lead.address && `Address: ${lead.address}`,
+    lead.zipCode && `ZIP: ${lead.zipCode}`,
+    lead.issueDescription && `Issue: ${lead.issueDescription}`,
+    lead.preferredAppointmentTime && `Preferred appointment: ${lead.preferredAppointmentTime}`,
+    lead.photosAvailable !== null && lead.photosAvailable !== undefined && `Photos available: ${lead.photosAvailable ? "yes" : "no"}`,
+    lead.aiSummary && `Previous summary: ${lead.aiSummary}`
+  ].filter(Boolean);
+
+  const recentMessages = lead.messages
+    .slice(-10)
+    .map((message) => `${message.channel} ${message.direction}: ${message.body}`)
+    .join("\n");
+
+  const currentTime = new Date();
+  const bookedAppointments = lead.appointments.filter((appointment) => appointment.status === "booked");
+  const upcomingAppointments = bookedAppointments
+    .filter((appointment) => appointment.startAt >= currentTime)
+    .sort((a, b) => a.startAt - b.startAt);
+  const pastAppointments = bookedAppointments
+    .filter((appointment) => appointment.startAt < currentTime)
+    .sort((a, b) => b.startAt - a.startAt);
+  const nextAppointment = upcomingAppointments[0];
+  const lastAppointment = pastAppointments[0];
+  let eventGuidance = "No appointment is currently booked. Continue qualifying the service request and guide toward scheduling.";
+
+  if (nextAppointment) {
+    eventGuidance = `The caller has an upcoming ${lead.jobType || business.industryType} appointment on ${new Date(nextAppointment.startAt).toLocaleString()}. Greet them with awareness of the appointment. A natural version is: "I see you have an upcoming ${lead.jobType || "service"} appointment with ${business.name}. Are you calling to update details, reschedule, or add anything before the visit?"`;
+  } else if (lastAppointment) {
+    eventGuidance = `The caller's most recent ${lead.jobType || business.industryType} appointment was on ${new Date(lastAppointment.startAt).toLocaleString()}. Greet them as a follow-up caller. A natural version is: "I see you recently had your ${lead.jobType || "service"} appointment with ${business.name}. How did everything go, and do you need any follow-up help?"`;
+  }
+
+  const appointments = bookedAppointments
+    .map((appointment) => {
+      const timing = appointment.startAt >= currentTime ? "Upcoming" : "Past";
+      return `${timing} appointment: ${new Date(appointment.startAt).toLocaleString()} (${appointment.status})`;
+    })
+    .join("\n");
+
+  return `# Business Context
+Business name: ${business.name}
+Industry: ${business.industryType}
+Service areas: ${business.serviceAreas.join(", ") || "not listed"}
+Service types: ${business.serviceTypes.map((type) => type.name).join(", ") || "not listed"}
+
+# Returning Caller Memory
+This caller may have contacted the business before. Use the known information below. Do not ask for details that are already known unless you need to confirm they are still accurate.
+${knownFields.join("\n") || "No lead details collected yet."}
+
+# Event Guidance
+${eventGuidance}
+
+# Recent Conversation History
+${recentMessages || "No previous messages."}
+
+# Appointment History
+${appointments || "No appointment booked yet."}`;
+}
+
+function updateRealtimeSession(openAiWs, callerMemory = "") {
+  if (openAiWs.readyState !== WebSocket.OPEN) return;
+
+  const voice = process.env.OPENAI_REALTIME_VOICE || "alloy";
+
+  sendJson(openAiWs, {
+    type: "session.update",
+    session: {
+      modalities: ["audio", "text"],
+      instructions: `${DEFAULT_INSTRUCTIONS}\n\n${callerMemory}`,
+      voice,
+      input_audio_format: "g711_ulaw",
+      output_audio_format: "g711_ulaw",
+      input_audio_transcription: {
+        model: "whisper-1"
+      },
+      turn_detection: {
+        type: "server_vad",
+        threshold: 0.95,
+        prefix_padding_ms: 500,
+        silence_duration_ms: 1700,
+        create_response: true,
+        interrupt_response: false
+      }
+    }
+  });
+}
+
+function addCallContext(openAiWs, { businessName }) {
+  sendJson(openAiWs, {
+    type: "conversation.item.create",
+    item: {
+      type: "message",
+      role: "user",
+      content: [
+        {
+          type: "input_text",
+          text: `The phone call has just connected. Greet the caller warmly, mention ${businessName}, and ask how you can help. Keep it brief.`
+        }
+      ]
+    }
+  });
+  sendJson(openAiWs, { type: "response.create" });
+}
+
+function appendTranscriptLine(transcript, speaker, text) {
+  const body = String(text || "").trim();
+  if (!body) return;
+  transcript.push({ speaker, body, at: new Date() });
+  console.log(`[voice-ai] transcript ${speaker}: ${body}`);
+}
+
+function voiceMemoryEnabled() {
+  return process.env.ENABLE_VOICE_MEMORY === "true";
+}
+
+function decodeMuLawByte(muLawByte) {
+  const MULAW_BIAS = 0x84;
+  let value = ~muLawByte & 0xff;
+  const sign = value & 0x80;
+  const exponent = (value >> 4) & 0x07;
+  const mantissa = value & 0x0f;
+  let sample = ((mantissa << 3) + MULAW_BIAS) << exponent;
+  sample -= MULAW_BIAS;
+  return sign ? -sample : sample;
+}
+
+function getPcmuRms(payload) {
+  const buffer = Buffer.from(payload, "base64");
+  if (!buffer.length) return 0;
+
+  let sumSquares = 0;
+  for (const byte of buffer) {
+    const sample = decodeMuLawByte(byte) / 32768;
+    sumSquares += sample * sample;
+  }
+
+  return Math.sqrt(sumSquares / buffer.length);
+}
+
+async function saveVoiceCall({ leadId, businessId, transcript }) {
+  if (!leadId || !transcript.length) return;
+
+  for (const line of transcript) {
+    await prisma.message.create({
+      data: {
+        leadId,
+        direction: line.speaker === "caller" ? "inbound" : "outbound",
+        channel: "voice",
+        body: line.body
+      }
+    });
+  }
+
+  const lead = await prisma.lead.findUnique({ where: { id: leadId } });
+  const business = await prisma.business.findUnique({
+    where: { id: businessId },
+    include: { serviceTypes: true, availability: true }
+  });
+
+  if (!lead || !business) return;
+
+  const messages = await prisma.message.findMany({ where: { leadId }, orderBy: { createdAt: "asc" } });
+  const aiResult = await runAiLeadAgent({ business, lead, messages });
+
+  await prisma.lead.update({
+    where: { id: leadId },
+    data: {
+      ...aiResult.extractedFields,
+      priority: aiResult.leadPriority,
+      status: aiResult.leadStatus === "new" ? "qualified" : aiResult.leadStatus,
+      aiSummary: aiResult.contractorSummary,
+      lastMessage: transcript[transcript.length - 1]?.body || lead.lastMessage
+    }
+  });
+}
+
+export function handleTwilioVoiceStream(twilioWs) {
+  if (!process.env.OPENAI_API_KEY) {
+    twilioWs.close(1011, "Missing OpenAI API key");
+    return;
+  }
+
+  let streamSid = null;
+  let sessionReady = false;
+  let leadId = null;
+  let businessId = null;
+  let businessName = "the business";
+  let callerMemory = "";
+  let currentAssistantTranscript = "";
+  let assistantAudioCooldownUntil = 0;
+  let localSpeechStartedAt = 0;
+  let localLastLoudAt = 0;
+  let localSpeechOpen = false;
+  const pendingCallerFrames = [];
+  const seenEventTypes = new Set();
+  const transcript = [];
+  let saved = false;
+  let twilioStartReceived = false;
+  let openAiConnected = false;
+  let sessionInitialized = false;
+
+  function maybeInitSession() {
+    if (!twilioStartReceived || !openAiConnected || sessionInitialized) return;
+    sessionInitialized = true;
+    updateRealtimeSession(openAiWs, callerMemory);
+    addCallContext(openAiWs, { businessName });
+  }
+  const model = process.env.OPENAI_REALTIME_MODEL || "gpt-4o-realtime-preview";
+  const openAiWs = new WebSocket(`wss://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`, {
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      "OpenAI-Beta": "realtime=v1",
+      "OpenAI-Safety-Identifier": "leadrescue-phone-caller"
+    }
+  });
+
+  openAiWs.on("open", () => {
+    console.log("[voice-ai] Connected to OpenAI Realtime.");
+    openAiConnected = true;
+    maybeInitSession();
+  });
+
+  openAiWs.on("message", (raw) => {
+    let event;
+    try {
+      event = JSON.parse(raw.toString());
+    } catch {
+      return;
+    }
+
+    if (event.type === "session.updated" && !sessionReady) {
+      sessionReady = true;
+      console.log("[voice-ai] OpenAI session updated. Waiting for caller speech.");
+    }
+
+    if (event.type && !seenEventTypes.has(event.type) && seenEventTypes.size < 25) {
+      seenEventTypes.add(event.type);
+      console.log(`[voice-ai] OpenAI event type: ${event.type}`);
+    }
+
+    if (event.type === "session.created") {
+      console.log("[voice-ai] OpenAI session created.");
+    }
+
+    if (event.type === "input_audio_buffer.speech_started" && streamSid) {
+      console.log("[voice-ai] Caller speech detected.");
+    }
+
+    if (event.type === "input_audio_buffer.speech_stopped" && streamSid) {
+      console.log("[voice-ai] Caller speech stopped.");
+    }
+
+    if (event.type === "conversation.item.input_audio_transcription.completed") {
+      appendTranscriptLine(transcript, "caller", event.transcript);
+    }
+
+    if (event.type === "response.audio_transcript.delta" || event.type === "response.output_audio_transcript.delta") {
+      currentAssistantTranscript += event.delta || "";
+    }
+
+    if (event.type === "response.audio_transcript.done" || event.type === "response.output_audio_transcript.done") {
+      const finalText = event.transcript || currentAssistantTranscript;
+      appendTranscriptLine(transcript, "assistant", finalText);
+      currentAssistantTranscript = "";
+      assistantAudioCooldownUntil = Date.now() + 1800;
+    }
+
+    if (isAudioDeltaEvent(event) && streamSid) {
+      const delta = getAudioDelta(event);
+      if (delta) {
+        assistantAudioCooldownUntil = Date.now() + 1500;
+        console.log(`[voice-ai] forwarding audio delta bytes=${delta.length}`);
+        sendJson(twilioWs, {
+          event: "media",
+          streamSid,
+          media: { payload: delta }
+        });
+      }
+    }
+
+    if (event.type === "error") {
+      console.error("[voice-ai] OpenAI Realtime error:", JSON.stringify(event.error || event));
+    }
+  });
+
+  openAiWs.on("error", (error) => {
+    console.error("[voice-ai] OpenAI WebSocket error:", error.message, error.code || "");
+  });
+
+  openAiWs.on("close", (code, reason) => {
+    const reasonStr = Buffer.isBuffer(reason) ? reason.toString() : String(reason || "");
+    console.error(`[voice-ai] OpenAI WebSocket closed — code=${code} reason=${reasonStr || "(none)"}`);
+    if (twilioWs.readyState === WebSocket.OPEN) twilioWs.close();
+  });
+
+  twilioWs.on("message", (raw) => {
+    let event;
+    try {
+      event = JSON.parse(raw.toString());
+    } catch {
+      return;
+    }
+
+    if (event.event === "start") {
+      streamSid = event.start?.streamSid || event.streamSid;
+      leadId = event.start?.customParameters?.leadId || null;
+      businessId = event.start?.customParameters?.businessId || null;
+      businessName = event.start?.customParameters?.businessName || businessName;
+      console.log(`[voice-ai] Twilio stream started streamSid=${streamSid}`);
+      if (voiceMemoryEnabled()) {
+        buildCallerMemory({ leadId, businessId })
+          .then((memory) => {
+            callerMemory = memory;
+            twilioStartReceived = true;
+            maybeInitSession();
+          })
+          .catch((error) => {
+            console.error("[voice-ai] Failed to build caller memory:", error.message);
+            twilioStartReceived = true;
+            maybeInitSession();
+          });
+      } else {
+        twilioStartReceived = true;
+        maybeInitSession();
+      }
+      return;
+    }
+
+    if (event.event === "media" && event.media?.payload) {
+      if (Date.now() < assistantAudioCooldownUntil) {
+        return;
+      }
+
+      const now = Date.now();
+      const rms = getPcmuRms(event.media.payload);
+      const isLoudEnough = rms >= 0.018;
+
+      if (!isLoudEnough) {
+        if (localSpeechOpen && now - localLastLoudAt > 900) {
+          localSpeechOpen = false;
+          pendingCallerFrames.length = 0;
+        }
+        return;
+      }
+
+      if (!localSpeechOpen) {
+        localSpeechOpen = true;
+        localSpeechStartedAt = now;
+        pendingCallerFrames.length = 0;
+      }
+
+      localLastLoudAt = now;
+      pendingCallerFrames.push(event.media.payload);
+
+      const speechMs = now - localSpeechStartedAt;
+      if (speechMs < 420) {
+        if (pendingCallerFrames.length > 80) pendingCallerFrames.shift();
+        return;
+      }
+
+      if (pendingCallerFrames.length) {
+        for (const payload of pendingCallerFrames.splice(0)) {
+          sendJson(openAiWs, {
+            type: "input_audio_buffer.append",
+            audio: payload
+          });
+        }
+        return;
+      }
+
+      sendJson(openAiWs, {
+        type: "input_audio_buffer.append",
+        audio: event.media.payload
+      });
+      return;
+    }
+
+    if (event.event === "stop") {
+      console.log("[voice-ai] Twilio stream stopped.");
+      if (openAiWs.readyState === WebSocket.OPEN) openAiWs.close();
+    }
+  });
+
+  twilioWs.on("close", async () => {
+    if (openAiWs.readyState === WebSocket.OPEN || openAiWs.readyState === WebSocket.CONNECTING) {
+      openAiWs.close();
+    }
+    if (!saved) {
+      saved = true;
+      try {
+        await saveVoiceCall({ leadId, businessId, transcript });
+        console.log(`[voice-ai] Saved voice transcript lines=${transcript.length} leadId=${leadId}`);
+      } catch (error) {
+        console.error("[voice-ai] Failed to save voice transcript:", error.message);
+      }
+    }
+  });
+}

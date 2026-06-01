@@ -1,0 +1,168 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum LeadStatus {
+  new
+  texting
+  qualified
+  appointment_booked
+  closed
+  spam
+}
+
+enum LeadPriority {
+  emergency
+  high
+  normal
+  low
+}
+
+enum MessageDirection {
+  inbound
+  outbound
+}
+
+enum MessageChannel {
+  sms
+  voice
+  internal
+}
+
+enum AppointmentStatus {
+  booked
+  cancelled
+  completed
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  business     Business?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model SubscriptionPlan {
+  id          String     @id @default(cuid())
+  name        String     @unique
+  priceCents  Int
+  description String
+  businesses  Business[]
+}
+
+model Business {
+  id                     String                 @id @default(cuid())
+  ownerId                String                 @unique
+  owner                  User                   @relation(fields: [ownerId], references: [id])
+  subscriptionPlanId     String?
+  subscriptionPlan       SubscriptionPlan?      @relation(fields: [subscriptionPlanId], references: [id])
+  name                   String
+  industryType           String
+  twilioPhoneNumber      String?
+  businessPhoneNumber    String?
+  ownerNotificationPhone String?
+  ownerNotificationEmail String?
+  serviceAreas           String[]               @default([])
+  businessHours          Json?
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  leads                  Lead[]
+  appointments           Appointment[]
+  availability           BusinessAvailability[]
+  serviceTypes           ServiceType[]
+  webhookLogs            WebhookLog[]
+}
+
+model ServiceType {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name       String
+  createdAt  DateTime @default(now())
+
+  @@unique([businessId, name])
+}
+
+model BusinessAvailability {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  dayOfWeek  Int
+  startTime  String
+  endTime    String
+  slotMinutes Int     @default(60)
+  createdAt  DateTime @default(now())
+}
+
+model Lead {
+  id                       String          @id @default(cuid())
+  businessId               String
+  business                 Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customerName             String?
+  customerPhone            String
+  address                  String?
+  zipCode                  String?
+  jobType                  String?
+  urgency                  String?
+  issueDescription         String?
+  preferredAppointmentTime String?
+  photosAvailable          Boolean?
+  source                   String          @default("sms")
+  status                   LeadStatus      @default(new)
+  priority                 LeadPriority    @default(normal)
+  aiSummary                String?
+  manualNotes              String?
+  lastMessage              String?
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+  messages                 Message[]
+  appointments             Appointment[]
+
+  @@index([businessId, customerPhone])
+}
+
+model Message {
+  id          String           @id @default(cuid())
+  leadId      String
+  lead        Lead             @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  direction   MessageDirection
+  channel     MessageChannel   @default(sms)
+  body        String
+  twilioSid   String?
+  createdAt   DateTime         @default(now())
+}
+
+model Appointment {
+  id           String            @id @default(cuid())
+  businessId   String
+  business     Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  leadId       String
+  lead         Lead              @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  startAt      DateTime
+  endAt        DateTime
+  status       AppointmentStatus @default(booked)
+  calendarEventId String?
+  notes        String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([businessId, startAt])
+}
+
+model WebhookLog {
+  id         String   @id @default(cuid())
+  businessId String?
+  business   Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  provider   String
+  eventType  String
+  payload    Json
+  createdAt  DateTime @default(now())
+}
