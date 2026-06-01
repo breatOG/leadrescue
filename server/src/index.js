@@ -1,30 +1,8 @@
 import "dotenv/config";
-import { execSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
 
 // Prefer public URL so Railway's internal DNS issues don't block startup
-if (!process.env.DATABASE_URL && process.env.DATABASE_PUBLIC_URL) {
-  process.env.DATABASE_URL = process.env.DATABASE_PUBLIC_URL;
-}
 if (process.env.DATABASE_PUBLIC_URL) {
   process.env.DATABASE_URL = process.env.DATABASE_PUBLIC_URL;
-}
-
-const serverDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-
-if (process.env.DATABASE_URL) {
-  try {
-    console.log("[startup] Running prisma db push...");
-    execSync("npx prisma db push", { cwd: serverDir, stdio: "inherit", env: process.env });
-    console.log("[startup] Seeding database...");
-    execSync("node prisma/seed.js", { cwd: serverDir, stdio: "inherit", env: process.env });
-    console.log("[startup] Database ready.");
-  } catch (e) {
-    console.error("[startup] Database setup error:", e.message);
-  }
-} else {
-  console.warn("[startup] No DATABASE_URL — skipping migrations.");
 }
 
 import http from "node:http";
