@@ -320,7 +320,7 @@ export function handleTwilioVoiceStream(twilioWs) {
     updateRealtimeSession(openAiWs, callerMemory);
     addCallContext(openAiWs, { businessName });
   }
-  const model = process.env.OPENAI_REALTIME_MODEL || "gpt-4o-realtime-preview";
+  const model = process.env.OPENAI_REALTIME_MODEL || "gpt-4o-mini-realtime-preview";
   const openAiWs = new WebSocket(`wss://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`, {
     headers: {
       Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
