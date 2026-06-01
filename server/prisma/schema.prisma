@@ -41,19 +41,39 @@ enum AppointmentStatus {
 }
 
 model User {
-  id                   String    @id @default(cuid())
-  email                String    @unique
-  phoneNumber          String?   @unique
+  id                   String      @id @default(cuid())
+  email                String      @unique
+  phoneNumber          String?     @unique
   passwordHash         String
   name                 String?
-  role                 String    @default("owner")
+  role                 String      @default("owner")
+  emailVerified        Boolean     @default(false)
   stripeCustomerId     String?
   stripeSubscriptionId String?
-  subscriptionStatus   String    @default("inactive")
+  subscriptionStatus   String      @default("inactive")
   subscriptionPlan     String?
   business             Business?
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  authTokens           AuthToken[]
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+}
+
+enum AuthTokenType {
+  email_verify
+  password_reset
+}
+
+model AuthToken {
+  id        String        @id @default(cuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      AuthTokenType
+  tokenHash String        @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime      @default(now())
+
+  @@index([userId, type])
 }
 
 model SubscriptionPlan {

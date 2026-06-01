@@ -15,6 +15,7 @@ const user = {
   email: "demo@leadrescue.local",
   passwordHash: bcrypt.hashSync("password123", 12),
   name: "Jordan Carter",
+  emailVerified: true,
   createdAt: now(),
   updatedAt: now()
 };
@@ -58,7 +59,8 @@ const db = {
   leads: [],
   messages: [],
   appointments: [],
-  webhookLogs: []
+  webhookLogs: [],
+  authTokens: []
 };
 
 function seedLeads() {
@@ -221,7 +223,7 @@ export const mockPrisma = {
     findFirst: async ({ where = {}, include } = {}) => includeUser(db.users.find((item) => matches(item, where)) || null, include),
     findMany: async ({ orderBy } = {}) => sortRecords(db.users, orderBy).map((u) => includeUser(u, null)),
     create: async ({ data, include }) => {
-      const created = { id: id("user"), email: data.email, phoneNumber: data.phoneNumber || null, passwordHash: data.passwordHash, name: data.name || null, role: data.role || "owner", createdAt: now(), updatedAt: now() };
+      const created = { id: id("user"), email: data.email, phoneNumber: data.phoneNumber || null, passwordHash: data.passwordHash, name: data.name || null, role: data.role || "owner", emailVerified: data.emailVerified ?? false, createdAt: now(), updatedAt: now() };
       db.users.push(created);
       if (data.business?.create) createBusiness(data.business.create, created.id);
       return includeUser(created, include);
@@ -336,5 +338,36 @@ export const mockPrisma = {
       db.webhookLogs.push(created);
       return created;
     }
+  },
+  authToken: {
+    create: async ({ data }) => {
+      const created = { id: id("authtoken"), usedAt: null, createdAt: now(), ...data };
+      db.authTokens.push(created);
+      return created;
+    },
+    findUnique: async ({ where, include }) => {
+      const record = db.authTokens.find((item) => matches(item, where)) || null;
+      if (record && include?.user) return { ...record, user: db.users.find((u) => u.id === record.userId) || null };
+      return record;
+    },
+    update: async ({ where, data }) => {
+      const record = db.authTokens.find((item) => matches(item, where));
+      if (record) Object.assign(record, data);
+      return record;
+    },
+    updateMany: async ({ where, data }) => {
+      const records = db.authTokens.filter((item) => matches(item, where));
+      records.forEach((record) => Object.assign(record, data));
+      return { count: records.length };
+    },
+    deleteMany: async ({ where }) => {
+      const before = db.authTokens.length;
+      db.authTokens = db.authTokens.filter((item) => !matches(item, where));
+      return { count: before - db.authTokens.length };
+    }
+  },
+  $transaction: async (arg) => {
+    if (typeof arg === "function") return arg(mockPrisma);
+    return Promise.all(arg);
   }
 };

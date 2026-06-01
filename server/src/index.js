@@ -21,6 +21,7 @@ import dashboardRoutes from "./routes/dashboardRoutes.js";
 import webhookRoutes from "./routes/webhookRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import { hasTwilioConfig } from "./services/twilioService.js";
+import { hasEmailConfig } from "./services/emailService.js";
 import { WebSocketServer } from "ws";
 import { handleTwilioVoiceStream, aiVoiceEnabled } from "./services/realtimeVoiceService.js";
 
@@ -43,7 +44,8 @@ app.get("/health", (req, res) => {
   res.json({
     ok: true,
     mockOpenAI: !process.env.OPENAI_API_KEY,
-    mockTwilio: !hasTwilioConfig()
+    mockTwilio: !hasTwilioConfig(),
+    mockEmail: !hasEmailConfig()
   });
 });
 

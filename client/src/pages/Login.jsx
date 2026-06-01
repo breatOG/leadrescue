@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, setToken, setUser } from "../api/client.js";
+import AuthLayout from "../components/AuthLayout.jsx";
+import PasswordInput from "../components/PasswordInput.jsx";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -25,42 +27,43 @@ export default function Login() {
   }
 
   return (
-    <div className="auth-page">
-      <form className="auth-card" onSubmit={submit}>
-        <Link className="brand auth-brand" to="/"><span className="brand-mark">LR</span> LeadRescue</Link>
-        <h1>Contractor login</h1>
-        <label>
+    <AuthLayout
+      eyebrow="Welcome back"
+      title="Sign in to LeadRescue"
+      subtitle="Enter your details to get back to your dashboard."
+      footer={<>Don't have an account? <Link className="auth-link" to="/register">Sign up free</Link></>}
+    >
+      <form className="auth-form" onSubmit={submit}>
+        <label className="auth-label">
           Phone number or email
           <input
+            className="auth-input"
             type="text"
             value={form.identifier}
             onChange={(e) => setForm({ ...form, identifier: e.target.value })}
-            placeholder="+1 (317) 555-0000"
+            placeholder="you@example.com"
             autoComplete="username"
             required
           />
         </label>
-        <label>
+        <label className="auth-label">
           Password
-          <input
-            type="password"
+          <PasswordInput
+            className="auth-input"
             value={form.password}
             onChange={(e) => setForm({ ...form, password: e.target.value })}
             autoComplete="current-password"
             required
           />
         </label>
-        {error && <p className="error">{error}</p>}
-        <button className="button full" type="submit" disabled={loading}>
+        <div className="auth-forgot">
+          <Link to="/forgot-password">Forgot password?</Link>
+        </div>
+        {error && <div className="auth-error">{error}</div>}
+        <button className="auth-btn" type="submit" disabled={loading}>
           {loading ? "Signing in…" : "Sign in"}
         </button>
-        <p style={{ textAlign: "center", marginTop: "1.25rem", fontSize: "0.875rem", color: "#64748b" }}>
-          Don't have an account?{" "}
-          <Link to="/register" style={{ color: "#2563eb", fontWeight: 600, textDecoration: "none" }}>
-            Sign up free
-          </Link>
-        </p>
       </form>
-    </div>
+    </AuthLayout>
   );
 }
