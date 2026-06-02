@@ -9,6 +9,7 @@ router.use(requireAuth);
 router.get(
   "/",
   asyncHandler(async (req, res) => {
+    if (!req.business) return res.status(400).json({ error: "No business configured. Please complete your profile in Settings." });
     const [totalLeads, missedCallsRecovered, appointmentsBooked, highPriorityLeads, recentConversations] = await Promise.all([
       prisma.lead.count({ where: { businessId: req.business.id } }),
       prisma.lead.count({ where: { businessId: req.business.id, source: "missed_call" } }),

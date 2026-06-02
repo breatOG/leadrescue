@@ -7,8 +7,14 @@ import { sendSms } from "../services/twilioService.js";
 const router = express.Router();
 router.use(requireAuth);
 
+function requireBusiness(req, res, next) {
+  if (!req.business) return res.status(400).json({ error: "No business configured. Please complete your profile in Settings." });
+  next();
+}
+
 router.get(
   "/",
+  requireBusiness,
   asyncHandler(async (req, res) => {
     const leads = await prisma.lead.findMany({
       where: { businessId: req.business.id },
