@@ -149,6 +149,7 @@ router.post(
     const client = getTwilioAdminClient();
     const purchased = await client.incomingPhoneNumbers.create({
       phoneNumber,
+      friendlyName: `LeadRescue – ${req.business.name || req.business.id}`,
       smsUrl: `${baseUrl}/webhooks/twilio/sms`,
       smsMethod: "POST",
       voiceUrl: `${baseUrl}/webhooks/twilio/voice`,
@@ -190,8 +191,9 @@ router.post(
       });
     }
 
-    // Configure webhooks
+    // Configure webhooks and label with business name
     await client.incomingPhoneNumbers(number.sid).update({
+      friendlyName: `LeadRescue – ${req.business.name || req.business.id}`,
       smsUrl: `${baseUrl}/webhooks/twilio/sms`,
       smsMethod: "POST",
       voiceUrl: `${baseUrl}/webhooks/twilio/voice`,
@@ -230,6 +232,7 @@ router.post(
     if (!number) return res.status(404).json({ error: "Number not found in this Twilio account." });
 
     await client.incomingPhoneNumbers(number.sid).update({
+      friendlyName: `LeadRescue – ${business.name || business.id}`,
       smsUrl: `${baseUrl}/webhooks/twilio/sms`,
       smsMethod: "POST",
       voiceUrl: `${baseUrl}/webhooks/twilio/voice`,
