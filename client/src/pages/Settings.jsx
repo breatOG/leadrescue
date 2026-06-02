@@ -47,95 +47,138 @@ function UsageBar({ used, limit, isUnlimited }) {
   );
 }
 
+const PLAN_CARDS = [
+  { key: "starter", label: "Starter", price: 79,  highlights: ["100 leads / mo", "SMS AI"] },
+  { key: "pro",     label: "Pro",     price: 199, highlights: ["500 leads / mo", "SMS + Voice AI"] },
+  { key: "scale",   label: "Scale",   price: 399, highlights: ["Unlimited leads", "Everything"] },
+];
+
 function SubscriptionPanel() {
   const [usage, setUsage] = useState(null);
   const [portalLoading, setPortalLoading] = useState(false);
-  const [portalError, setPortalError] = useState("");
+  const [switching, setSwitching] = useState(null);
+  const [msg, setMsg] = useState("");
+  const [msgOk, setMsgOk] = useState(false);
 
-  useEffect(() => {
-    api("/api/payments/usage").then(setUsage).catch(() => {});
-  }, []);
+  useEffect(() => { api("/api/payments/usage").then(setUsage).catch(() => {}); }, []);
 
   async function openPortal() {
-    setPortalError("");
-    setPortalLoading(true);
+    setMsg(""); setPortalLoading(true);
     try {
       const { url } = await api("/api/payments/portal", { method: "POST" });
       window.location.href = url;
     } catch (err) {
-      setPortalError(err.message || "Could not open billing portal. Try again.");
+      setMsg(err.message || "Could not open billing portal.");
       setPortalLoading(false);
     }
   }
 
+  async function switchPlan(planKey) {
+    setMsg(""); setSwitching(planKey);
+    try {
+      await api("/api/payments/change-plan", { method: "POST", body: { plan: planKey } });
+      setMsg(`Switched to ${planKey} plan.`); setMsgOk(true);
+      const d = await api("/api/payments/usage");
+      setUsage(d);
+    } catch (err) {
+      // If no subscription yet, fall through to subscribe flow
+      if (err.message?.includes("No active subscription")) {
+        const { url } = await api("/api/payments/subscribe", { method: "POST", body: { plan: planKey } });
+        window.location.href = url;
+      } else {
+        setMsg(err.message); setMsgOk(false);
+      }
+    } finally { setSwitching(null); }
+  }
+
   if (!usage) return null;
 
-  const { plan, subscriptionStatus, leadsThisMonth, leadsLimit, voice } = usage;
+  const { plan, subscriptionStatus, leadsThisMonth, leadsLimit } = usage;
   const info = PLAN_FEATURES[plan] || PLAN_FEATURES.starter;
   const isUnlimited = !leadsLimit || leadsLimit >= 1e10;
-  const remaining = isUnlimited ? null : leadsLimit - leadsThisMonth;
   const pct = isUnlimited ? 0 : (leadsThisMonth / leadsLimit) * 100;
-
-  const statusColor = subscriptionStatus === "active" ? "#16a34a" : subscriptionStatus === "past_due" ? "#b45309" : "#ef4444";
-  const statusLabel = subscriptionStatus === "active" ? "Active" : subscriptionStatus === "past_due" ? "Past due" : "Inactive";
+  const remaining = isUnlimited ? null : leadsLimit - leadsThisMonth;
+  const statusOk = subscriptionStatus === "active";
 
   return (
     <div className="panel" style={{ marginBottom: 18 }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "0.75rem" }}>
+      {/* Header row */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 18 }}>
         <div>
-          <h2 style={{ margin: "0 0 4px" }}>Subscription</h2>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <span style={{ display: "inline-block", background: `${info.color}18`, color: info.color, border: `1px solid ${info.color}40`, borderRadius: 6, padding: "2px 10px", fontSize: "0.8rem", fontWeight: 700, textTransform: "capitalize" }}>
-              {info.label}
-            </span>
-            <span style={{ fontSize: "0.8rem", fontWeight: 600, color: statusColor }}>{statusLabel}</span>
+          <h2 style={{ margin: "0 0 6px" }}>Subscription</h2>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ background: `${info.color}15`, color: info.color, border: `1px solid ${info.color}35`, borderRadius: 6, padding: "2px 10px", fontSize: "0.78rem", fontWeight: 800, textTransform: "capitalize" }}>{info.label}</span>
+            <span style={{ fontSize: "0.78rem", fontWeight: 700, color: statusOk ? "#16a34a" : "#ef4444" }}>{statusOk ? "Active" : subscriptionStatus}</span>
           </div>
         </div>
-        <button
-          className="button"
-          onClick={openPortal}
-          disabled={portalLoading}
-          style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}
-        >
-          <Zap size={15} />
-          {portalLoading ? "Opening…" : "Manage billing"}
+        <button className="ghost" onClick={openPortal} disabled={portalLoading} style={{ fontSize: "0.82rem", display: "flex", alignItems: "center", gap: 5 }}>
+          <Zap size={13} />{portalLoading ? "Opening…" : "Billing portal"}
         </button>
       </div>
 
       {subscriptionStatus === "past_due" && (
-        <p style={{ marginTop: 10, padding: "0.6rem 0.85rem", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 8, fontSize: "0.85rem", color: "#92400e" }}>
-          Your last payment failed. Please update your payment method to keep your account active.
-        </p>
+        <div style={{ marginBottom: 16, padding: "10px 14px", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 10, fontSize: "0.84rem", color: "#92400e" }}>
+          Your last payment failed. Update your payment method in the billing portal to keep access.
+        </div>
       )}
 
-      <div style={{ marginTop: 16 }}>
-        <div style={{ fontSize: "0.85rem", color: "#374151", fontWeight: 600, marginBottom: 6 }}>Leads this month</div>
+      {/* Usage */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "0.82rem", fontWeight: 600, color: "#374151", marginBottom: 6 }}>
+          <span>Leads this month</span>
+          <span style={{ color: "#64748b", fontWeight: 400 }}>{isUnlimited ? "Unlimited" : `${leadsThisMonth} / ${leadsLimit}`}</span>
+        </div>
         <UsageBar used={leadsThisMonth} limit={leadsLimit} isUnlimited={isUnlimited} />
-        {!isUnlimited && (
-          <p style={{ margin: "4px 0 0", fontSize: "0.82rem", color: pct >= 90 ? "#ef4444" : pct >= 70 ? "#b45309" : "#6b7280" }}>
-            {pct >= 100 ? "Monthly limit reached — upgrade to capture more leads." : `${remaining} lead${remaining === 1 ? "" : "s"} remaining this month`}
+        {!isUnlimited && pct >= 70 && (
+          <p style={{ margin: "5px 0 0", fontSize: "0.79rem", color: pct >= 100 ? "#ef4444" : "#b45309", fontWeight: 600 }}>
+            {pct >= 100 ? "Limit reached — switch to a higher plan below" : `${remaining} lead${remaining === 1 ? "" : "s"} remaining`}
           </p>
         )}
       </div>
 
-      <div style={{ marginTop: 18, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.3rem 1.5rem" }}>
+      {/* Included features */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 20px", marginBottom: 22 }}>
         {info.features.map((f) => (
-          <div key={f} style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.84rem", color: "#16a34a" }}>
-            <CheckCircle size={14} /> {f}
+          <div key={f} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: "0.82rem", color: "#16a34a" }}>
+            <CheckCircle size={13} style={{ flexShrink: 0 }} />{f}
           </div>
         ))}
         {info.missing.map((f) => (
-          <div key={f} style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.84rem", color: "#9ca3af" }}>
-            <CheckCircle size={14} style={{ opacity: 0.3 }} /> {f}
+          <div key={f} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: "0.82rem", color: "#cbd5e1" }}>
+            <CheckCircle size={13} style={{ flexShrink: 0, opacity: 0.4 }} />{f}
           </div>
         ))}
       </div>
 
-      {portalError && <p style={{ marginTop: 10, color: "#ef4444", fontSize: "0.85rem" }}>{portalError}</p>}
+      {/* Plan switcher */}
+      <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: 18 }}>
+        <p style={{ margin: "0 0 12px", fontSize: "0.78rem", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em" }}>Change plan</p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+          {PLAN_CARDS.map((pc) => {
+            const isCurrent = plan === pc.key;
+            return (
+              <div key={pc.key} style={{ border: `1.5px solid ${isCurrent ? "var(--accent)" : "#e5e7eb"}`, borderRadius: 12, padding: "14px 14px 12px", background: isCurrent ? "#f0fdf9" : "#fff", position: "relative" }}>
+                {isCurrent && <div style={{ position: "absolute", top: -10, left: "50%", transform: "translateX(-50%)", background: "var(--accent)", color: "#fff", fontSize: "0.65rem", fontWeight: 800, padding: "2px 10px", borderRadius: 99, whiteSpace: "nowrap" }}>Current</div>}
+                <div style={{ fontWeight: 800, fontSize: "0.88rem", color: "#0f172a" }}>{pc.label}</div>
+                <div style={{ fontSize: "1.2rem", fontWeight: 900, color: isCurrent ? "var(--accent)" : "#0f172a", margin: "4px 0" }}>${pc.price}<span style={{ fontSize: "0.72rem", fontWeight: 500, color: "#94a3b8" }}>/mo</span></div>
+                {pc.highlights.map((h) => <div key={h} style={{ fontSize: "0.73rem", color: "#64748b", marginBottom: 2 }}>• {h}</div>)}
+                <button
+                  onClick={() => switchPlan(pc.key)}
+                  disabled={isCurrent || !!switching}
+                  style={{ marginTop: 10, width: "100%", padding: "7px 0", borderRadius: 8, border: isCurrent ? "none" : "1px solid var(--line)", background: isCurrent ? "var(--accent)" : "#f8fafc", color: isCurrent ? "#fff" : "#374151", fontWeight: 700, fontSize: "0.78rem", cursor: isCurrent ? "default" : "pointer", transition: "all 0.15s", opacity: (switching && switching !== pc.key) ? 0.5 : 1 }}
+                  onMouseEnter={e => { if (!isCurrent) { e.currentTarget.style.background = "var(--accent)"; e.currentTarget.style.color = "#fff"; e.currentTarget.style.borderColor = "var(--accent)"; }}}
+                  onMouseLeave={e => { if (!isCurrent) { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.color = "#374151"; e.currentTarget.style.borderColor = "var(--line)"; }}}
+                >
+                  {isCurrent ? "Current plan" : switching === pc.key ? "Switching…" : `Switch to ${pc.label}`}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
-      <p style={{ marginTop: 14, fontSize: "0.78rem", color: "#9ca3af" }}>
-        Manage billing, upgrade, downgrade, or cancel via the billing portal. Subscriptions auto-renew monthly — you'll receive a reminder email before each renewal.
-      </p>
+      {msg && <p style={{ marginTop: 12, fontSize: "0.83rem", color: msgOk ? "#16a34a" : "#ef4444", fontWeight: 600 }}>{msg}</p>}
+      <p style={{ marginTop: 12, fontSize: "0.76rem", color: "#94a3b8" }}>Plans switch immediately with proration. To update payment method or cancel, use the billing portal.</p>
     </div>
   );
 }
@@ -568,12 +611,109 @@ function UserManagement() {
   );
 }
 
-const defaultAvailability = [1, 2, 3, 4, 5].map((dayOfWeek) => ({
-  dayOfWeek,
-  startTime: "09:00",
-  endTime: "17:00",
-  slotMinutes: 60
-}));
+const DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DAY_FULL  = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const SLOT_OPTIONS = [
+  { value: 30,  label: "30 min" },
+  { value: 45,  label: "45 min" },
+  { value: 60,  label: "1 hour" },
+  { value: 90,  label: "1.5 hours" },
+  { value: 120, label: "2 hours" },
+];
+
+function AvailabilityEditor({ availability, onChange }) {
+  // Group slots by dayOfWeek for rendering
+  const byDay = {};
+  availability.forEach((slot, idx) => {
+    const d = Number(slot.dayOfWeek);
+    if (!byDay[d]) byDay[d] = [];
+    byDay[d].push({ ...slot, _idx: idx });
+  });
+
+  function toggleDay(day) {
+    if (byDay[day]) {
+      onChange(availability.filter((s) => Number(s.dayOfWeek) !== day));
+    } else {
+      onChange([...availability, { dayOfWeek: day, startTime: "09:00", endTime: "17:00", slotMinutes: 60 }]);
+    }
+  }
+
+  function addBlock(day) {
+    onChange([...availability, { dayOfWeek: day, startTime: "09:00", endTime: "12:00", slotMinutes: 60 }]);
+  }
+
+  function removeBlock(idx) {
+    onChange(availability.filter((_, i) => i !== idx));
+  }
+
+  function updateBlock(idx, field, value) {
+    const next = [...availability];
+    next[idx] = { ...next[idx], [field]: value };
+    onChange(next);
+  }
+
+  return (
+    <div>
+      {/* Day toggles */}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 18 }}>
+        {[1, 2, 3, 4, 5, 6, 0].map((day) => {
+          const on = !!byDay[day];
+          return (
+            <button key={day} type="button" onClick={() => toggleDay(day)} style={{ padding: "7px 14px", borderRadius: 8, border: `1.5px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent)" : "#fff", color: on ? "#fff" : "#64748b", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer", transition: "all 0.15s" }}>
+              {DAY_SHORT[day]}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Time blocks per active day */}
+      {[1, 2, 3, 4, 5, 6, 0].map((day) => {
+        if (!byDay[day]) return null;
+        return (
+          <div key={day} style={{ marginBottom: 12, border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
+            <div style={{ padding: "10px 16px", background: "#f8fafc", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontWeight: 800, fontSize: "0.88rem", color: "#0f172a" }}>{DAY_FULL[day]}</span>
+              <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>{byDay[day].length} time block{byDay[day].length !== 1 ? "s" : ""}</span>
+            </div>
+            <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+              {byDay[day].map((slot) => (
+                <div key={slot._idx} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 130px 36px", gap: 8, alignItems: "end" }}>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "0.76rem", fontWeight: 700, color: "#64748b" }}>
+                    Start time
+                    <input type="time" value={slot.startTime} onChange={(e) => updateBlock(slot._idx, "startTime", e.target.value)} style={{ padding: "8px 10px", border: "1px solid var(--line)", borderRadius: 8, fontSize: "0.88rem", background: "#fff" }} />
+                  </label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "0.76rem", fontWeight: 700, color: "#64748b" }}>
+                    End time
+                    <input type="time" value={slot.endTime} onChange={(e) => updateBlock(slot._idx, "endTime", e.target.value)} style={{ padding: "8px 10px", border: "1px solid var(--line)", borderRadius: 8, fontSize: "0.88rem", background: "#fff" }} />
+                  </label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "0.76rem", fontWeight: 700, color: "#64748b" }}>
+                    Slot length
+                    <select value={slot.slotMinutes} onChange={(e) => updateBlock(slot._idx, "slotMinutes", Number(e.target.value))} style={{ padding: "8px 10px", border: "1px solid var(--line)", borderRadius: 8, fontSize: "0.88rem", background: "#fff" }}>
+                      {SLOT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </label>
+                  <button type="button" onClick={() => removeBlock(slot._idx)} title="Remove" style={{ height: 36, width: 36, borderRadius: 8, border: "1px solid #fecaca", background: "#fff", color: "#ef4444", cursor: "pointer", fontWeight: 800, fontSize: "1.1rem", lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+                </div>
+              ))}
+              <button type="button" onClick={() => addBlock(day)} style={{ alignSelf: "flex-start", marginTop: 4, padding: "6px 14px", borderRadius: 8, border: "1.5px dashed #cbd5e1", background: "transparent", color: "#64748b", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer" }}>
+                + Add time block
+              </button>
+            </div>
+          </div>
+        );
+      })}
+
+      {Object.keys(byDay).length === 0 && (
+        <p style={{ color: "#94a3b8", fontSize: "0.85rem", padding: "12px 0 4px" }}>No days selected. Click the day buttons above to add your available hours.</p>
+      )}
+    </div>
+  );
+}
+
+const defaultAvailability = [1, 2, 3, 4, 5].flatMap((dayOfWeek) => [
+  { dayOfWeek, startTime: "09:00", endTime: "12:00", slotMinutes: 60 },
+  { dayOfWeek, startTime: "13:00", endTime: "17:00", slotMinutes: 60 },
+]);
 
 export default function Settings() {
   const [form, setForm] = useState(null);
@@ -595,12 +735,6 @@ export default function Settings() {
 
   function setField(field, value) {
     setForm({ ...form, [field]: value });
-  }
-
-  function updateAvailability(index, field, value) {
-    const availability = [...form.availability];
-    availability[index] = { ...availability[index], [field]: value };
-    setField("availability", availability);
   }
 
   async function submit(event) {
@@ -642,29 +776,53 @@ export default function Settings() {
       />
       <SmsStatusPanel />
       <form className="panel settings-form" onSubmit={submit}>
+        {/* Business info */}
+        <div style={{ marginBottom: 8 }}>
+          <h2 style={{ margin: "0 0 4px", fontSize: "1rem" }}>Business details</h2>
+          <p style={{ margin: 0, fontSize: "0.8rem", color: "#94a3b8" }}>Basic information about your business used by the AI.</p>
+        </div>
         <div className="form-grid">
-          <label>Business name<input value={form.name || ""} onChange={(e) => setField("name", e.target.value)} /></label>
-          <label>Industry type<input value={form.industryType || ""} onChange={(e) => setField("industryType", e.target.value)} /></label>
-          <label>Twilio phone number<input value={form.twilioPhoneNumber || ""} onChange={(e) => setField("twilioPhoneNumber", e.target.value)} /></label>
-          <label>Business phone<input value={form.businessPhoneNumber || ""} onChange={(e) => setField("businessPhoneNumber", e.target.value)} /></label>
-          <label>Owner notification phone<input value={form.ownerNotificationPhone || ""} onChange={(e) => setField("ownerNotificationPhone", e.target.value)} /></label>
-          <label>Owner notification email<input value={form.ownerNotificationEmail || ""} onChange={(e) => setField("ownerNotificationEmail", e.target.value)} /></label>
+          <label>Business name<input value={form.name || ""} onChange={(e) => setField("name", e.target.value)} placeholder="Smith Plumbing LLC" /></label>
+          <label>Industry type<input value={form.industryType || ""} onChange={(e) => setField("industryType", e.target.value)} placeholder="Plumbing Contractor" /></label>
+          <label>
+            Service areas
+            <input value={form.serviceAreasText} onChange={(e) => setField("serviceAreasText", e.target.value)} placeholder="Indianapolis, Carmel, Fishers" />
+            <span style={{ fontSize: "0.74rem", color: "#94a3b8", fontWeight: 400 }}>Comma-separated cities or ZIP codes</span>
+          </label>
+          <label>
+            Service types
+            <input value={form.serviceTypesText} onChange={(e) => setField("serviceTypesText", e.target.value)} placeholder="Burst pipe, Drain cleaning, Water heater" />
+            <span style={{ fontSize: "0.74rem", color: "#94a3b8", fontWeight: 400 }}>Comma-separated — the AI uses these to qualify leads</span>
+          </label>
         </div>
-        <label>Service areas<input value={form.serviceAreasText} onChange={(e) => setField("serviceAreasText", e.target.value)} /></label>
-        <label>Service types<input value={form.serviceTypesText} onChange={(e) => setField("serviceTypesText", e.target.value)} /></label>
-        <h2>Appointment availability</h2>
-        <div className="availability-list">
-          {form.availability.map((slot, index) => (
-            <div className="availability-row" key={`${slot.dayOfWeek}-${index}`}>
-              <label>Day<input type="number" min="0" max="6" value={slot.dayOfWeek} onChange={(e) => updateAvailability(index, "dayOfWeek", e.target.value)} /></label>
-              <label>Start<input type="time" value={slot.startTime} onChange={(e) => updateAvailability(index, "startTime", e.target.value)} /></label>
-              <label>End<input type="time" value={slot.endTime} onChange={(e) => updateAvailability(index, "endTime", e.target.value)} /></label>
-              <label>Minutes<input type="number" min="30" value={slot.slotMinutes} onChange={(e) => updateAvailability(index, "slotMinutes", e.target.value)} /></label>
-            </div>
-          ))}
+
+        <div style={{ height: 1, background: "var(--line)", margin: "8px 0" }} />
+
+        {/* Notifications */}
+        <div style={{ marginBottom: 8 }}>
+          <h2 style={{ margin: "0 0 4px", fontSize: "1rem" }}>Notifications</h2>
+          <p style={{ margin: 0, fontSize: "0.8rem", color: "#94a3b8" }}>Where to send alerts when the AI qualifies a new lead.</p>
         </div>
-        {saved && <p className="success">Settings saved.</p>}
-        <button className="button" type="submit">Save settings</button>
+        <div className="form-grid">
+          <label>Alert email<input type="email" value={form.ownerNotificationEmail || ""} onChange={(e) => setField("ownerNotificationEmail", e.target.value)} placeholder="you@yourbusiness.com" /></label>
+          <label>Alert phone <span style={{ fontWeight: 400, color: "#94a3b8", fontSize: "0.78rem" }}>(SMS)</span><input value={form.ownerNotificationPhone || ""} onChange={(e) => setField("ownerNotificationPhone", e.target.value)} placeholder="+13175550100" /></label>
+          <label>Business phone <span style={{ fontWeight: 400, color: "#94a3b8", fontSize: "0.78rem" }}>(for reference)</span><input value={form.businessPhoneNumber || ""} onChange={(e) => setField("businessPhoneNumber", e.target.value)} placeholder="+13175550100" /></label>
+        </div>
+
+        <div style={{ height: 1, background: "var(--line)", margin: "8px 0" }} />
+
+        {/* Availability */}
+        <div style={{ marginBottom: 16 }}>
+          <h2 style={{ margin: "0 0 4px", fontSize: "1rem" }}>Appointment availability</h2>
+          <p style={{ margin: 0, fontSize: "0.8rem", color: "#94a3b8" }}>The AI only offers slots that fall within these windows. Toggle days on/off and set your hours.</p>
+        </div>
+        <AvailabilityEditor
+          availability={form.availability}
+          onChange={(next) => setField("availability", next)}
+        />
+
+        {saved && <p className="success" style={{ margin: "8px 0 0" }}>Settings saved.</p>}
+        <button className="button" type="submit" style={{ marginTop: 4 }}>Save settings</button>
       </form>
       <div className="panel" style={{ marginTop: 18 }}>
         <UserManagement />

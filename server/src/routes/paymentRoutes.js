@@ -135,6 +135,41 @@ router.post(
   })
 );
 
+// POST /api/payments/change-plan — instantly switch subscription plan (prorated)
+router.post(
+  "/change-plan",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const { plan } = req.body;
+    if (!PLAN_NAMES[plan]) return res.status(400).json({ error: "Invalid plan." });
+
+    const priceId = getPriceId(plan);
+    if (!priceId) return res.status(503).json({ error: `STRIPE_PRICE_${plan.toUpperCase()} is not configured.` });
+
+    if (!req.user.stripeSubscriptionId) {
+      return res.status(400).json({ error: "No active subscription found. Please subscribe first." });
+    }
+
+    const stripe = getStripe();
+    const subscription = await stripe.subscriptions.retrieve(req.user.stripeSubscriptionId);
+    const itemId = subscription.items.data[0]?.id;
+    if (!itemId) return res.status(400).json({ error: "Could not find subscription item." });
+
+    await stripe.subscriptions.update(req.user.stripeSubscriptionId, {
+      items: [{ id: itemId, price: priceId }],
+      proration_behavior: "create_prorations"
+    });
+
+    const user = await prisma.user.update({
+      where: { id: req.user.id },
+      data: { subscriptionPlan: plan }
+    });
+
+    const { passwordHash, ...safe } = user;
+    res.json({ ok: true, plan, user: safe });
+  })
+);
+
 // POST /api/payments/portal — create Stripe customer portal session (upgrade/downgrade/cancel)
 router.post(
   "/portal",
