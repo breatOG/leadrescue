@@ -104,7 +104,7 @@ export default function Dashboard() {
 
   if (error) return (
     <div className="page">
-      <h1>Dashboard</h1>
+      <h1>Dashboard </h1>
       <div style={{ padding: "18px 20px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 12, color: "#b91c1c", fontSize: "0.9rem" }}>{error}</div>
     </div>
   );
