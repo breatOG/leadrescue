@@ -32,6 +32,8 @@ const business = {
   ownerNotificationEmail: "demo@leadrescue.local",
   callHandlingMode: "ring_first",
   ringSeconds: 15,
+  afterHoursRing: false,
+  ringNumbers: [],
   serviceAreas: ["Indianapolis", "Carmel", "Fishers"],
   businessHours: {
     monday: "8:00 AM - 5:00 PM",
@@ -199,6 +201,8 @@ function createBusiness(data, ownerId) {
     ownerNotificationEmail: data.ownerNotificationEmail || "",
     callHandlingMode: data.callHandlingMode || "ring_first",
     ringSeconds: data.ringSeconds || 15,
+    afterHoursRing: data.afterHoursRing || false,
+    ringNumbers: data.ringNumbers || [],
     serviceAreas: data.serviceAreas || [],
     businessHours: data.businessHours || {},
     createdAt: now(),

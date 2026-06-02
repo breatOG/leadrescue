@@ -730,6 +730,7 @@ export default function Settings() {
           ...business,
           serviceAreasText: business.serviceAreas.join(", "),
           serviceTypesText: business.serviceTypes.map((type) => type.name).join(", "),
+          ringNumbersText: (business.ringNumbers || []).join(", "),
           availability: business.availability.length ? business.availability : defaultAvailability
         };
         setForm(next);
@@ -756,6 +757,8 @@ export default function Settings() {
         ownerNotificationEmail: form.ownerNotificationEmail,
         callHandlingMode: form.callHandlingMode || "ring_first",
         ringSeconds: Number(form.ringSeconds) || 15,
+        afterHoursRing: Boolean(form.afterHoursRing),
+        ringNumbers: (form.ringNumbersText || "").split(",").map((n) => n.trim()).filter(Boolean),
         serviceAreas: form.serviceAreasText.split(",").map((item) => item.trim()).filter(Boolean),
         serviceTypes: form.serviceTypesText.split(",").map((item) => item.trim()).filter(Boolean),
         businessHours: form.businessHours,
@@ -857,6 +860,31 @@ export default function Settings() {
           With <strong>"ring me first,"</strong> we call your alert phone{form.ownerNotificationPhone ? ` (${form.ownerNotificationPhone})` : ""} and ask you to press <strong>1</strong> to take the call. If you don't answer, decline, or it goes to voicemail, the AI receptionist picks up automatically.
           {!form.ownerNotificationPhone && <span style={{ color: "#b45309" }}> Add an alert phone above so we know where to ring you.</span>}
         </p>
+
+        {(form.callHandlingMode || "ring_first") === "ring_first" && (
+          <label style={{ display: "flex", alignItems: "flex-start", gap: 10, marginTop: 12, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={Boolean(form.afterHoursRing)}
+              onChange={(e) => setField("afterHoursRing", e.target.checked)}
+              style={{ width: 16, height: 16, marginTop: 2, accentColor: "var(--accent)", flexShrink: 0 }}
+            />
+            <span style={{ fontSize: "0.85rem", color: "#374151", fontWeight: 600 }}>
+              Also ring me after hours
+              <span style={{ display: "block", fontSize: "0.78rem", color: "#94a3b8", fontWeight: 400, marginTop: 2 }}>
+                When off, calls outside your business hours go straight to the AI receptionist. Emergencies still alert you.
+              </span>
+            </span>
+          </label>
+        )}
+
+        {(form.callHandlingMode || "ring_first") === "ring_first" && (
+          <label style={{ marginTop: 12 }}>
+            Also ring these team numbers <span style={{ fontWeight: 400, color: "#94a3b8", fontSize: "0.78rem" }}>(optional)</span>
+            <input value={form.ringNumbersText || ""} onChange={(e) => setField("ringNumbersText", e.target.value)} placeholder="+13175550111, +13175550222" />
+            <span style={{ fontSize: "0.74rem", color: "#94a3b8", fontWeight: 400 }}>Comma-separated. We ring everyone at once — whoever answers and presses 1 gets the call.</span>
+          </label>
+        )}
 
         <div style={{ height: 1, background: "var(--line)", margin: "12px 0 8px" }} />
 

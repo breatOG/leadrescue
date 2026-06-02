@@ -267,6 +267,38 @@ router.get(
   })
 );
 
+// --- Business hours ----------------------------------------------------------
+function parseTimeToMinutes(str) {
+  const m = String(str).trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  if (!m) return null;
+  let h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  const ap = (m[3] || "").toUpperCase();
+  if (ap === "PM" && h !== 12) h += 12;
+  if (ap === "AM" && h === 12) h = 0;
+  return h * 60 + min;
+}
+
+// True if "now" (in the business timezone) falls within the configured hours.
+// Unknown or unparseable hours are treated as open, so we never accidentally stop ringing.
+function isWithinBusinessHours(businessHours) {
+  if (!businessHours || typeof businessHours !== "object" || !Object.keys(businessHours).length) return true;
+  const tz = process.env.BUSINESS_TIMEZONE || "America/Indiana/Indianapolis";
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz, weekday: "long", hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+  }).formatToParts(new Date());
+  const get = (t) => parts.find((p) => p.type === t)?.value;
+  const day = (get("weekday") || "").toLowerCase();
+  const nowMin = Number(get("hour")) * 60 + Number(get("minute"));
+  const range = businessHours[day];
+  if (!range || /closed/i.test(range)) return false;
+  const [a, b] = String(range).split(/\s*[-–—]\s*/);
+  const start = parseTimeToMinutes(a);
+  const end = parseTimeToMinutes(b);
+  if (start == null || end == null) return true;
+  return nowMin >= start && nowMin < end;
+}
+
 // --- Ring-first call routing -------------------------------------------------
 // Caller CallSids whose owner accepted the screened call (pressed 1). Short TTL.
 const acceptedCalls = new Map(); // callSid -> expiresAt
@@ -353,12 +385,24 @@ router.post(
     }
 
     // Ring the owner's phone first; the AI takes over only on miss / decline / voicemail.
+    // Outside business hours we skip the ring (AI answers directly) unless the owner opted
+    // into after-hours ringing. Emergencies still alert the owner via the AI's notification.
     const mode = business.callHandlingMode || "ring_first";
     const ownerPhone = (business.ownerNotificationPhone || business.businessPhoneNumber || "").trim();
+    const openNow = isWithinBusinessHours(business.businessHours);
 
-    if (mode === "ring_first" && ownerPhone) {
+    // Ring the owner plus any additional team numbers simultaneously; whoever answers
+    // and presses 1 first gets the call (Twilio cancels the other legs on bridge).
+    const ringTargets = [...new Set(
+      [ownerPhone, ...(business.ringNumbers || [])].map((n) => String(n || "").trim()).filter(Boolean)
+    )];
+
+    if (mode === "ring_first" && ringTargets.length && (openNow || business.afterHoursRing)) {
       const ringSeconds = Number(business.ringSeconds) || 15;
       const q = `leadId=${lead.id}&amp;businessId=${business.id}`;
+      const numbersXml = ringTargets
+        .map((n) => `<Number url="/webhooks/twilio/screen?${q}" method="POST">${esc(n)}</Number>`)
+        .join("\n    ");
       await prisma.lead
         .update({ where: { id: lead.id }, data: { lastMessage: "Incoming call — ringing the team" } })
         .catch(() => {});
@@ -366,7 +410,7 @@ router.post(
 <Response>
   <Say voice="Google.en-US-Neural2-F">Thanks for calling ${esc(business.name)}. Connecting you now.</Say>
   <Dial timeout="${ringSeconds}" answerOnBridge="true" action="/webhooks/twilio/after-dial?${q}" method="POST">
-    <Number url="/webhooks/twilio/screen?${q}" method="POST">${esc(ownerPhone)}</Number>
+    ${numbersXml}
   </Dial>
 </Response>`);
     }

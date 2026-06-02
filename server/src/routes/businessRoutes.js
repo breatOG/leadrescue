@@ -57,6 +57,8 @@ router.put(
       ownerNotificationEmail,
       callHandlingMode,
       ringSeconds,
+      afterHoursRing,
+      ringNumbers,
       availability
     } = req.body;
 
@@ -76,6 +78,10 @@ router.put(
         ownerNotificationEmail,
         ...(callHandlingMode !== undefined ? { callHandlingMode } : {}),
         ...(ringSeconds !== undefined ? { ringSeconds: Number(ringSeconds) || 15 } : {}),
+        ...(afterHoursRing !== undefined ? { afterHoursRing: Boolean(afterHoursRing) } : {}),
+        ...(ringNumbers !== undefined
+          ? { ringNumbers: (Array.isArray(ringNumbers) ? ringNumbers : []).map((n) => String(n).trim()).filter(Boolean) }
+          : {}),
         serviceTypes: {
           create: (serviceTypes || []).filter(Boolean).map((type) => ({ name: type }))
         },
