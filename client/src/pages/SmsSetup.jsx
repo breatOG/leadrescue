@@ -143,10 +143,16 @@ export default function SmsSetup() {
     businessIndustry: "CONSTRUCTION",
     contactFirstName: "", contactLastName: "", contactEmail: "", contactPhone: "",
     useCase: "CUSTOMER_CARE",
-    campaignDescription: "We send automated SMS responses to customers who call or text our business number. The AI collects their service request details and books appointments. Customers must initiate contact first.",
-    sampleMessage1: "Hi! Thanks for reaching out to [Business Name]. Please reply with your name, what service you need, and your address — we'll get back to you shortly.",
-    sampleMessage2: "Thanks [Name]! We've got your request and someone will call you back at [phone] shortly. Reply STOP to opt out.",
-    optInDescription: "Customers opt in by calling or texting our business phone number first. We only respond to messages initiated by the customer."
+    campaignDescription: "This campaign provides conversational customer support and appointment coordination for local construction and home service businesses. Customers opt in by calling or texting the business phone number after finding it on the business website, Google Business Profile, advertising, vehicles, invoices, or business cards. When a customer calls and the business misses the call, the system sends a follow-up text to ask what service they need help with. The conversation may collect the customer's name, service type, urgency, job address or ZIP code, issue description, preferred appointment time, and whether photos are available. Messages are used only to respond to customer-initiated service requests, qualify the job, and schedule appointments.",
+    sampleMessage1: "LeadRescue: Sorry we missed your call to [Business Name]. What kind of service do you need help with? Reply STOP to opt out.",
+    sampleMessage2: "LeadRescue: Thanks [Customer Name]. What is the job address or ZIP code for your [Service Type] request? Reply STOP to unsubscribe.",
+    sampleMessage3: "LeadRescue: We have your request for [Issue Description]. Is this an emergency, needed today, this week, or flexible? Reply STOP to opt out.",
+    sampleMessage4: "LeadRescue: [Business Name] has openings on [Date] at [Time] or [Date] at [Time]. Which appointment works best? Reply STOP to opt out.",
+    sampleMessage5: "LeadRescue: You're booked with [Business Name] for [Service Type] on [Date] at [Time]. The team has your details and will follow up if needed. Reply STOP to opt out.",
+    optInMessage: "LeadRescue: You are subscribed to receive service-request and appointment-coordination text messages from [Business Name]. Message frequency varies, typically 1-6 messages per request. Msg & data rates may apply. Reply HELP for help or STOP to opt out.",
+    optOutMessage: "You have successfully been unsubscribed. You will not receive any more messages from this number. Reply START to resubscribe.",
+    helpMessage: "",
+    optInDescription: "Customers provide consent by initiating contact with the business through a phone call, text message, website contact form, online booking form, Google Business Profile, or other business-owned communication channels. SMS messages are sent only in response to a customer-initiated service request. If a customer calls the business and the call is missed, the system may send a single follow-up text directly related to the customer's inquiry so the business can respond promptly."
   });
 
   // Pre-fill from saved form data and check existing status
@@ -160,6 +166,19 @@ export default function SmsSetup() {
       }
     }).catch(() => {});
   }, []);
+
+  // Auto-populate help message from business name + contact details when user reaches step 3
+  useEffect(() => {
+    if (step === 2) {
+      setForm((f) => {
+        if (f.helpMessage) return f;
+        const name = f.businessLegalName || "[Business Name]";
+        const phone = f.contactPhone || "[Phone]";
+        const email = f.contactEmail || "[Email]";
+        return { ...f, helpMessage: `LeadRescue Support: For assistance, contact ${name} at ${phone} or ${email}. Msg & data rates may apply. Reply STOP to opt out.` };
+      });
+    }
+  }, [step]);
 
   function set(field) {
     return (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
@@ -315,16 +334,40 @@ export default function SmsSetup() {
               <textarea style={textareaStyle} value={form.campaignDescription} onChange={set("campaignDescription")} />
             </Field>
 
-            <Field label="Sample message 1" hint="An example of an actual message you'll send">
+            <Field label="Sample message 1" hint="Missed-call follow-up">
               <textarea style={{ ...textareaStyle, minHeight: 60 }} value={form.sampleMessage1} onChange={set("sampleMessage1")} />
             </Field>
 
-            <Field label="Sample message 2" hint="Another example message">
+            <Field label="Sample message 2" hint="Collecting job details">
               <textarea style={{ ...textareaStyle, minHeight: 60 }} value={form.sampleMessage2} onChange={set("sampleMessage2")} />
             </Field>
 
+            <Field label="Sample message 3" hint="Urgency qualification">
+              <textarea style={{ ...textareaStyle, minHeight: 60 }} value={form.sampleMessage3} onChange={set("sampleMessage3")} />
+            </Field>
+
+            <Field label="Sample message 4" hint="Appointment slot offer">
+              <textarea style={{ ...textareaStyle, minHeight: 60 }} value={form.sampleMessage4} onChange={set("sampleMessage4")} />
+            </Field>
+
+            <Field label="Sample message 5" hint="Booking confirmation">
+              <textarea style={{ ...textareaStyle, minHeight: 60 }} value={form.sampleMessage5} onChange={set("sampleMessage5")} />
+            </Field>
+
+            <Field label="Opt-in confirmation message" hint="Sent when a customer texts START">
+              <textarea style={{ ...textareaStyle, minHeight: 60 }} value={form.optInMessage} onChange={set("optInMessage")} />
+            </Field>
+
+            <Field label="Opt-out message" hint="Sent when a customer texts STOP">
+              <textarea style={{ ...textareaStyle, minHeight: 60 }} value={form.optOutMessage} onChange={set("optOutMessage")} />
+            </Field>
+
+            <Field label="Help message" hint="Sent when a customer texts HELP — auto-filled from your contact info">
+              <textarea style={{ ...textareaStyle, minHeight: 60 }} value={form.helpMessage} onChange={set("helpMessage")} />
+            </Field>
+
             <Field label="How customers opt in" hint="Describe how customers agree to receive messages from you">
-              <textarea style={{ ...textareaStyle, minHeight: 60 }} value={form.optInDescription} onChange={set("optInDescription")} />
+              <textarea style={{ ...textareaStyle, minHeight: 80 }} value={form.optInDescription} onChange={set("optInDescription")} />
             </Field>
 
             <div style={{ padding: "0.75rem 1rem", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, fontSize: "0.8rem", color: "#1e40af" }}>
@@ -359,6 +402,12 @@ export default function SmsSetup() {
                 ["Description", form.campaignDescription],
                 ["Sample 1", form.sampleMessage1],
                 ["Sample 2", form.sampleMessage2],
+                ["Sample 3", form.sampleMessage3],
+                ["Sample 4", form.sampleMessage4],
+                ["Sample 5", form.sampleMessage5],
+                ["Opt-in message", form.optInMessage],
+                ["Opt-out message", form.optOutMessage],
+                ["Help message", form.helpMessage],
                 ["Opt-in method", form.optInDescription]
               ]}
             ].map(({ section, rows }) => (

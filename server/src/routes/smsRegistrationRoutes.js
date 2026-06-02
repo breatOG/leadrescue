@@ -49,7 +49,9 @@ router.post(
       businessLegalName, businessType, ein, businessAddress, businessCity,
       businessState, businessZip, businessWebsite, businessIndustry,
       contactFirstName, contactLastName, contactEmail, contactPhone,
-      useCase, campaignDescription, sampleMessage1, sampleMessage2, optInDescription
+      useCase, campaignDescription,
+      sampleMessage1, sampleMessage2, sampleMessage3, sampleMessage4, sampleMessage5,
+      optInDescription
     } = req.body;
 
     // Save form data regardless of API success
@@ -159,7 +161,7 @@ router.post(
           brandRegistrationSid: brand.sid,
           description: campaignDescription,
           messageFlow: optInDescription,
-          messageSamples: [sampleMessage1, sampleMessage2].filter(Boolean),
+          messageSamples: [sampleMessage1, sampleMessage2, sampleMessage3, sampleMessage4, sampleMessage5].filter(Boolean),
           usAppToPersonUsecase: useCase,
           hasEmbeddedLinks: false,
           hasEmbeddedPhone: true,
