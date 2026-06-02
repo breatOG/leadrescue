@@ -11,14 +11,22 @@ function toneForPriority(priority) {
 }
 
 export default function Leads() {
-  const [leads, setLeads] = useState([]);
+  const [leads, setLeads] = useState(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    function load() { api("/api/leads").then((data) => setLeads(data.leads)); }
+    function load() {
+      api("/api/leads")
+        .then((data) => setLeads(data.leads))
+        .catch((e) => setError(e.message));
+    }
     load();
     const interval = setInterval(load, 15000);
     return () => clearInterval(interval);
   }, []);
+
+  if (error) return <div className="page"><h1>Leads</h1><p style={{ color: "#ef4444" }}>{error}</p></div>;
+  if (leads === null) return <div className="page"><h1>Leads</h1><p>Loading...</p></div>;
 
   return (
     <div className="page">

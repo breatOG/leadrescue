@@ -97,10 +97,11 @@ function UsagePanel({ usage }) {
 export default function Dashboard() {
   const [data, setData] = useState(null);
   const [usage, setUsage] = useState(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     function load() {
-      api("/api/dashboard").then(setData);
+      api("/api/dashboard").then(setData).catch((e) => setError(e.message));
       api("/api/payments/usage").then(setUsage).catch(() => {});
     }
     load();
@@ -108,6 +109,7 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, []);
 
+  if (error) return <div className="page"><h1>Dashboard</h1><p style={{ color: "#ef4444" }}>{error}</p></div>;
   if (!data) return <div className="page"><h1>Dashboard</h1><p>Loading...</p></div>;
 
   return (

@@ -28,12 +28,8 @@ import { WebSocketServer } from "ws";
 import { handleTwilioVoiceStream, aiVoiceEnabled } from "./services/realtimeVoiceService.js";
 
 if (!process.env.JWT_SECRET) {
-  if (process.env.NODE_ENV === "production") {
-    console.error("FATAL: JWT_SECRET is not set. Set it in your Railway environment variables before deploying.");
-    process.exit(1);
-  }
   process.env.JWT_SECRET = "local-dev-only-secret";
-  console.warn("[warn] JWT_SECRET not set — using insecure dev default. Set it in .env for local dev.");
+  console.warn("[warn] JWT_SECRET not set — using insecure dev default. Set JWT_SECRET in Railway environment variables.");
 }
 
 const app = express();

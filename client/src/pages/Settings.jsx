@@ -578,16 +578,19 @@ const defaultAvailability = [1, 2, 3, 4, 5].map((dayOfWeek) => ({
 export default function Settings() {
   const [form, setForm] = useState(null);
   const [saved, setSaved] = useState(false);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
-    api("/api/business/settings").then(({ business }) => {
-      setForm({
-        ...business,
-        serviceAreasText: business.serviceAreas.join(", "),
-        serviceTypesText: business.serviceTypes.map((type) => type.name).join(", "),
-        availability: business.availability.length ? business.availability : defaultAvailability
-      });
-    });
+    api("/api/business/settings")
+      .then(({ business }) => {
+        setForm({
+          ...business,
+          serviceAreasText: business.serviceAreas.join(", "),
+          serviceTypesText: business.serviceTypes.map((type) => type.name).join(", "),
+          availability: business.availability.length ? business.availability : defaultAvailability
+        });
+      })
+      .catch((e) => setLoadError(e.message));
   }, []);
 
   function setField(field, value) {
@@ -621,6 +624,7 @@ export default function Settings() {
     setSaved(true);
   }
 
+  if (loadError) return <div className="page"><h1>Settings</h1><p style={{ color: "#ef4444" }}>{loadError}</p></div>;
   if (!form) return <div className="page"><h1>Settings</h1><p>Loading...</p></div>;
 
   return (

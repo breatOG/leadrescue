@@ -33,11 +33,24 @@ export async function api(path, options = {}) {
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const response = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers,
-    body: options.body ? JSON.stringify(options.body) : undefined
-  });
+  let response;
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      ...options,
+      headers,
+      body: options.body ? JSON.stringify(options.body) : undefined
+    });
+  } catch (networkErr) {
+    throw new Error("Cannot reach the server. Check your internet connection.");
+  }
+
+  // Token expired or invalid — clear session and redirect to login
+  if (response.status === 401) {
+    setToken(null);
+    setUser(null);
+    window.location.href = "/login";
+    throw new Error("Session expired. Please log in again.");
+  }
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: "Request failed" }));
