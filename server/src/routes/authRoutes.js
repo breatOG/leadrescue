@@ -159,6 +159,7 @@ router.post(
             name: businessName,
             industryType,
             ownerNotificationEmail: email,
+            ownerNotificationPhone: phoneNumber || "", // default the ring/alert number to their login phone
             serviceAreas: [],
             businessHours: {
               monday: "8:00 AM - 5:00 PM",

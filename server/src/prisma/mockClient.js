@@ -15,6 +15,7 @@ const user = {
   email: "demo@leadrescue.local",
   passwordHash: bcrypt.hashSync("password123", 12),
   name: "Jordan Carter",
+  phoneNumber: "+13175550000",
   emailVerified: true,
   createdAt: now(),
   updatedAt: now()
@@ -171,6 +172,7 @@ function includeBusiness(record, include) {
   if (include?.subscriptionPlan) result.subscriptionPlan = db.subscriptionPlans.find((plan) => plan.id === record.subscriptionPlanId);
   if (include?.serviceTypes) result.serviceTypes = db.serviceTypes.filter((item) => item.businessId === record.id);
   if (include?.availability) result.availability = sortRecords(db.availability.filter((item) => item.businessId === record.id), include.availability.orderBy);
+  if (include?.owner) result.owner = db.users.find((u) => u.id === record.ownerId) || null;
   return result;
 }
 

@@ -63,9 +63,9 @@ async function findBusinessByTwilioNumber(number) {
     (number &&
       (await prisma.business.findFirst({
         where: { twilioPhoneNumber: number },
-        include: { serviceTypes: true }
+        include: { serviceTypes: true, owner: true }
       }))) ||
-    (await prisma.business.findFirst({ include: { serviceTypes: true } }));
+    (await prisma.business.findFirst({ include: { serviceTypes: true, owner: true } }));
 
   if (!business) {
     throw new Error("No business configured for incoming webhook");
@@ -388,7 +388,12 @@ router.post(
     // Outside business hours we skip the ring (AI answers directly) unless the owner opted
     // into after-hours ringing. Emergencies still alert the owner via the AI's notification.
     const mode = business.callHandlingMode || "ring_first";
-    const ownerPhone = (business.ownerNotificationPhone || business.businessPhoneNumber || "").trim();
+    let ownerPhone = (business.ownerNotificationPhone || business.businessPhoneNumber || "").trim();
+    // Fall back to the owner's login phone if no alert phone is set — but never ring the
+    // same number the call came in on (that would loop).
+    if (!ownerPhone && business.owner?.phoneNumber && business.owner.phoneNumber !== business.twilioPhoneNumber) {
+      ownerPhone = business.owner.phoneNumber.trim();
+    }
     const openNow = isWithinBusinessHours(business.businessHours);
 
     // Ring the owner plus any additional team numbers simultaneously; whoever answers
