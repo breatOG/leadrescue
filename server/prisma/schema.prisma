@@ -156,6 +156,7 @@ model Lead {
   source                   String          @default("sms")
   status                   LeadStatus      @default(new)
   priority                 LeadPriority    @default(normal)
+  handoffMode              String          @default("ai")
   aiSummary                String?
   manualNotes              String?
   lastMessage              String?

@@ -3,6 +3,7 @@ import asyncHandler from "express-async-handler";
 import { prisma } from "../prisma/client.js";
 import { requireAuth } from "../middleware/auth.js";
 import { sendSms } from "../services/twilioService.js";
+import { runAiLeadAgent } from "../services/aiLeadAgent.js";
 
 const router = express.Router();
 router.use(requireAuth);
@@ -70,9 +71,36 @@ router.post(
     const message = await prisma.message.create({
       data: { leadId: lead.id, direction: "outbound", channel: "sms", body, twilioSid: result.sid }
     });
-    await prisma.lead.update({ where: { id: lead.id }, data: { lastMessage: body, status: "texting" } });
+    // Sending a manual reply means the contractor is handling this thread — pause the AI.
+    await prisma.lead.update({ where: { id: lead.id }, data: { lastMessage: body, status: "texting", handoffMode: "human" } });
 
     return res.json({ message });
+  })
+);
+
+// Toggle who controls the SMS thread: "ai" (auto-replies) or "human" (contractor handles it).
+router.post(
+  "/:id/handoff",
+  asyncHandler(async (req, res) => {
+    const mode = req.body.mode === "human" ? "human" : "ai";
+    const lead = await prisma.lead.update({
+      where: { id: req.params.id, businessId: req.business.id },
+      data: { handoffMode: mode }
+    });
+    res.json({ lead });
+  })
+);
+
+// Copilot: generate a suggested next reply to the customer. Does NOT send it.
+router.post(
+  "/:id/suggest-reply",
+  asyncHandler(async (req, res) => {
+    const lead = await prisma.lead.findFirst({ where: { id: req.params.id, businessId: req.business.id } });
+    if (!lead) return res.status(404).json({ error: "Lead not found" });
+
+    const messages = await prisma.message.findMany({ where: { leadId: lead.id }, orderBy: { createdAt: "asc" } });
+    const ai = await runAiLeadAgent({ business: req.business, lead, messages });
+    res.json({ suggestion: (ai.nextMessageToCustomer || "").trim() });
   })
 );
 

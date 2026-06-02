@@ -193,6 +193,13 @@ router.post(
       data: { lastMessage: inboundBody, status: lead.status === "new" ? "texting" : lead.status }
     });
 
+    // If a human has taken over this thread, the AI stays silent — just alert the team.
+    if (lead.handoffMode === "human") {
+      notifyContractor({ business, lead, summary: `New customer text: "${inboundBody.slice(0, 140)}"` })
+        .catch((e) => console.error("[sms] human-mode notify failed:", e.message));
+      return res.type("text/xml").send("<Response></Response>");
+    }
+
     // Appointment slot selection (if they texted 1/2/3 after being qualified)
     const bookedResponse = await handleAppointmentChoice({ business, lead, body: inboundBody });
     if (bookedResponse) return res.type("text/xml").send("<Response></Response>");

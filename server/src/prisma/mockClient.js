@@ -293,7 +293,7 @@ export const mockPrisma = {
     findFirst: async ({ where = {}, include, orderBy } = {}) => includeLead(sortRecords(db.leads.filter((item) => matches(item, where)), orderBy)[0] || null, include),
     findUnique: async ({ where, include }) => includeLead(db.leads.find((item) => matches(item, where)) || null, include),
     create: async ({ data }) => {
-      const created = { id: id("lead"), createdAt: now(), updatedAt: now(), status: "new", priority: "normal", ...data };
+      const created = { id: id("lead"), createdAt: now(), updatedAt: now(), status: "new", priority: "normal", handoffMode: "ai", ...data };
       db.leads.push(created);
       return created;
     },
@@ -304,6 +304,7 @@ export const mockPrisma = {
     }
   },
   message: {
+    count: async ({ where = {} } = {}) => db.messages.filter((item) => matches(item, where)).length,
     findMany: async ({ where = {}, orderBy } = {}) => sortRecords(db.messages.filter((item) => matches(item, where)), orderBy),
     create: async ({ data }) => {
       const created = { id: id("msg"), createdAt: now(), ...data };

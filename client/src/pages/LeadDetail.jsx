@@ -24,6 +24,7 @@ export default function LeadDetail() {
   const [lead, setLead] = useState(() => getCache(`lead_${id}`));
   const [manualMessage, setManualMessage] = useState("");
   const [notes, setNotes] = useState("");
+  const [drafting, setDrafting] = useState(false);
 
   async function loadLead() {
     const data = await api(`/api/leads/${id}`);
@@ -58,6 +59,23 @@ export default function LeadDetail() {
     await api(`/api/leads/${id}/manual-message`, { method: "POST", body: { body: manualMessage } });
     setManualMessage("");
     await loadLead();
+  }
+
+  async function setHandoff(mode) {
+    await api(`/api/leads/${id}/handoff`, { method: "POST", body: { mode } });
+    await loadLead();
+  }
+
+  async function draftWithAi() {
+    setDrafting(true);
+    try {
+      const { suggestion } = await api(`/api/leads/${id}/suggest-reply`, { method: "POST" });
+      if (suggestion) setManualMessage(suggestion);
+    } catch {
+      /* ignore */
+    } finally {
+      setDrafting(false);
+    }
   }
 
   if (!lead) return (
@@ -131,7 +149,20 @@ export default function LeadDetail() {
       </section>
 
       <section className="panel">
-        <h2>Conversation</h2>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 4 }}>
+          <h2 style={{ margin: 0 }}>Conversation</h2>
+          {lead.handoffMode === "human" ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span className="badge" style={{ background: "#dcfce7", color: "#166534" }}>You're handling this</span>
+              <button className="ghost small" onClick={() => setHandoff("ai")}>Hand back to AI</button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span className="badge" style={{ background: "#e6f4f1", color: "var(--accent-dark)" }}>AI is replying</span>
+              <button className="ghost small" onClick={() => setHandoff("human")}>Take over</button>
+            </div>
+          )}
+        </div>
         <div className="message-thread">
           {visibleMessages.map((message) => (
             <div className={`message ${message.direction}`} key={message.id}>
@@ -145,8 +176,18 @@ export default function LeadDetail() {
         </div>
         <form className="manual-message" onSubmit={sendManualMessage}>
           <textarea value={manualMessage} onChange={(e) => setManualMessage(e.target.value)} placeholder="Send a manual SMS..." rows="3" />
-          <button className="button" type="submit">Send SMS</button>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button className="button" type="submit">Send SMS</button>
+            <button type="button" className="ghost" onClick={draftWithAi} disabled={drafting}>
+              {drafting ? "Drafting…" : "✨ Draft with AI"}
+            </button>
+          </div>
         </form>
+        {lead.handoffMode !== "human" && (
+          <p style={{ margin: "8px 0 0", fontSize: "0.8rem", color: "var(--muted)" }}>
+            The AI is auto-replying to this customer. Sending a message or clicking "Take over" pauses it so you can handle the thread.
+          </p>
+        )}
       </section>
     </div>
   );
