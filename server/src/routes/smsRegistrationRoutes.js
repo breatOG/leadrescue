@@ -26,17 +26,64 @@ async function getA2pPolicySid(client) {
   return "RN806dd6cd175f314e1f96a9727ee271f4"; // fallback known SID
 }
 
-// GET /api/sms-registration — current status and saved form data
+// Map free-text industryType to Twilio's A2P industry enum values
+function mapIndustry(industryType) {
+  const t = (industryType || "").toLowerCase();
+  if (t.includes("hvac") || t.includes("plumb") || t.includes("util") || t.includes("electric")) return "UTILITIES";
+  if (t.includes("real estate") || t.includes("property") || t.includes("realt")) return "REAL_ESTATE";
+  if (t.includes("home") || t.includes("repair") || t.includes("handyman") || t.includes("landscape")) return "HOME_AND_GARDEN";
+  if (t.includes("transport") || t.includes("moving") || t.includes("logistic")) return "TRANSPORTATION";
+  if (t.includes("engineer")) return "ENGINEERING";
+  return "CONSTRUCTION"; // default for contractor businesses
+}
+
+// GET /api/sms-registration — current status, saved form data, and prefill from business profile
 router.get(
   "/",
   asyncHandler(async (req, res) => {
-    const business = await prisma.business.findUnique({ where: { id: req.business.id } });
+    const business = await prisma.business.findUnique({
+      where: { id: req.business.id },
+      include: { owner: true }
+    });
+
+    const bName = business.name || "";
+    const ownerEmail = business.ownerNotificationEmail || business.owner?.email || "";
+    const ownerPhone = business.ownerNotificationPhone || business.businessPhoneNumber || "";
+    const industry = mapIndustry(business.industryType);
+    const ownerName = business.owner?.name || "";
+    const nameParts = ownerName.trim().split(/\s+/);
+    const contactFirstName = nameParts[0] || "";
+    const contactLastName = nameParts.slice(1).join(" ") || "";
+
+    // Pre-built message templates using the actual business name
+    const prefill = {
+      businessLegalName: bName,
+      businessIndustry: industry,
+      contactFirstName,
+      contactLastName,
+      contactEmail: ownerEmail,
+      contactPhone: ownerPhone,
+      campaignDescription: `This campaign provides conversational customer support and appointment coordination for ${bName || "local construction and home service businesses"}. Customers opt in by calling or texting the business phone number after finding it on the business website, Google Business Profile, advertising, vehicles, invoices, or business cards. When a customer calls and the business misses the call, the system sends a follow-up text to ask what service they need help with. The conversation may collect the customer's name, service type, urgency, job address or ZIP code, issue description, preferred appointment time, and whether photos are available. Messages are used only to respond to customer-initiated service requests, qualify the job, and schedule appointments.`,
+      sampleMessage1: `LeadRescue: Sorry we missed your call to ${bName || "[Business Name]"}. What kind of service do you need help with? Reply STOP to opt out.`,
+      sampleMessage2: `LeadRescue: Thanks [Customer Name]. What is the job address or ZIP code for your [Service Type] request? Reply STOP to unsubscribe.`,
+      sampleMessage3: `LeadRescue: We have your request for [Issue Description]. Is this an emergency, needed today, this week, or flexible? Reply STOP to opt out.`,
+      sampleMessage4: `LeadRescue: ${bName || "[Business Name]"} has openings on [Date] at [Time] or [Date] at [Time]. Which appointment works best? Reply STOP to opt out.`,
+      sampleMessage5: `LeadRescue: You're booked with ${bName || "[Business Name]"} for [Service Type] on [Date] at [Time]. The team has your details and will follow up if needed. Reply STOP to opt out.`,
+      optInMessage: `LeadRescue: You are subscribed to receive service-request and appointment-coordination text messages from ${bName || "[Business Name]"}. Message frequency varies, typically 1-6 messages per request. Msg & data rates may apply. Reply HELP for help or STOP to opt out.`,
+      optOutMessage: `You have successfully been unsubscribed. You will not receive any more messages from this number. Reply START to resubscribe.`,
+      helpMessage: ownerPhone || ownerEmail
+        ? `LeadRescue Support: For assistance, contact ${bName || "[Business Name]"}${ownerPhone ? ` at ${ownerPhone}` : ""}${ownerEmail ? ` or ${ownerEmail}` : ""}. Msg & data rates may apply. Reply STOP to opt out.`
+        : "",
+      optInDescription: `Customers provide consent by initiating contact with the business through a phone call, text message, website contact form, online booking form, Google Business Profile, or other business-owned communication channels. SMS messages are sent only in response to a customer-initiated service request. If a customer calls the business and the call is missed, the system may send a single follow-up text directly related to the customer's inquiry so the business can respond promptly.`
+    };
+
     res.json({
       smsStatus: business.smsStatus || "not_started",
       twilioMsgServiceSid: business.twilioMsgServiceSid,
       twilioBrandSid: business.twilioBrandSid,
       twilioCampaignSid: business.twilioCampaignSid,
-      smsFormData: business.smsFormData || null
+      smsFormData: business.smsFormData || null,
+      prefill
     });
   })
 );

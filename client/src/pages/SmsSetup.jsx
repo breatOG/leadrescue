@@ -143,42 +143,45 @@ export default function SmsSetup() {
     businessIndustry: "CONSTRUCTION",
     contactFirstName: "", contactLastName: "", contactEmail: "", contactPhone: "",
     useCase: "CUSTOMER_CARE",
-    campaignDescription: "This campaign provides conversational customer support and appointment coordination for local construction and home service businesses. Customers opt in by calling or texting the business phone number after finding it on the business website, Google Business Profile, advertising, vehicles, invoices, or business cards. When a customer calls and the business misses the call, the system sends a follow-up text to ask what service they need help with. The conversation may collect the customer's name, service type, urgency, job address or ZIP code, issue description, preferred appointment time, and whether photos are available. Messages are used only to respond to customer-initiated service requests, qualify the job, and schedule appointments.",
-    sampleMessage1: "LeadRescue: Sorry we missed your call to [Business Name]. What kind of service do you need help with? Reply STOP to opt out.",
-    sampleMessage2: "LeadRescue: Thanks [Customer Name]. What is the job address or ZIP code for your [Service Type] request? Reply STOP to unsubscribe.",
-    sampleMessage3: "LeadRescue: We have your request for [Issue Description]. Is this an emergency, needed today, this week, or flexible? Reply STOP to opt out.",
-    sampleMessage4: "LeadRescue: [Business Name] has openings on [Date] at [Time] or [Date] at [Time]. Which appointment works best? Reply STOP to opt out.",
-    sampleMessage5: "LeadRescue: You're booked with [Business Name] for [Service Type] on [Date] at [Time]. The team has your details and will follow up if needed. Reply STOP to opt out.",
-    optInMessage: "LeadRescue: You are subscribed to receive service-request and appointment-coordination text messages from [Business Name]. Message frequency varies, typically 1-6 messages per request. Msg & data rates may apply. Reply HELP for help or STOP to opt out.",
-    optOutMessage: "You have successfully been unsubscribed. You will not receive any more messages from this number. Reply START to resubscribe.",
-    helpMessage: "",
-    optInDescription: "Customers provide consent by initiating contact with the business through a phone call, text message, website contact form, online booking form, Google Business Profile, or other business-owned communication channels. SMS messages are sent only in response to a customer-initiated service request. If a customer calls the business and the call is missed, the system may send a single follow-up text directly related to the customer's inquiry so the business can respond promptly."
+    // These will be overwritten by server prefill on mount — defaults are shown only if prefill fails
+    campaignDescription: "",
+    sampleMessage1: "", sampleMessage2: "", sampleMessage3: "", sampleMessage4: "", sampleMessage5: "",
+    optInMessage: "", optOutMessage: "", helpMessage: "",
+    optInDescription: ""
   });
 
-  // Pre-fill from saved form data and check existing status
+  // Pre-fill from saved form data (or from business profile prefill if first time)
   useEffect(() => {
     api("/api/sms-registration").then((data) => {
       if (data.smsStatus === "pending" || data.smsStatus === "approved" || data.smsStatus === "failed") {
         setResult({ status: data.smsStatus, steps: [] });
       }
       if (data.smsFormData) {
+        // Previously saved — restore exactly
         setForm((f) => ({ ...f, ...data.smsFormData }));
+      } else if (data.prefill) {
+        // First time — pre-populate from their business profile
+        setForm((f) => ({ ...f, ...data.prefill }));
       }
     }).catch(() => {});
   }, []);
 
-  // Auto-populate help message from business name + contact details when user reaches step 3
+  // Regenerate help message when contact details change (only if user hasn't manually edited it)
   useEffect(() => {
     if (step === 2) {
       setForm((f) => {
-        if (f.helpMessage) return f;
         const name = f.businessLegalName || "[Business Name]";
         const phone = f.contactPhone || "[Phone]";
         const email = f.contactEmail || "[Email]";
-        return { ...f, helpMessage: `LeadRescue Support: For assistance, contact ${name} at ${phone} or ${email}. Msg & data rates may apply. Reply STOP to opt out.` };
+        const autoHelp = `LeadRescue Support: For assistance, contact ${name}${phone !== "[Phone]" ? ` at ${phone}` : ""}${email !== "[Email]" ? ` or ${email}` : ""}. Msg & data rates may apply. Reply STOP to opt out.`;
+        // Only overwrite if it still looks like an auto-generated value
+        if (!f.helpMessage || f.helpMessage.startsWith("LeadRescue Support:")) {
+          return { ...f, helpMessage: autoHelp };
+        }
+        return f;
       });
     }
-  }, [step]);
+  }, [step, form.contactPhone, form.contactEmail, form.businessLegalName]);
 
   function set(field) {
     return (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
@@ -238,13 +241,16 @@ export default function SmsSetup() {
       </div>
 
       <div className="panel">
+        <div style={{ padding: "0.75rem 1rem", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, fontSize: "0.82rem", color: "#166534", marginBottom: 20 }}>
+          <strong>Fully automated.</strong> Fill out the steps below and click Submit — we handle everything with Twilio automatically. No Twilio dashboard needed. Approval from carriers usually takes 1–3 business days.
+        </div>
         <StepIndicator current={step} />
 
         {step === 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <h2 style={{ marginTop: 0 }}>Business information</h2>
             <p style={{ color: "#6b7280", fontSize: "0.85rem", marginTop: -8 }}>
-              This is submitted to the carrier network for compliance. Use your exact legal business details.
+              We pre-filled what we know from your profile. Add your EIN and address, then continue.
             </p>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
               <Field label="Legal business name" hint="Exactly as registered with the government">
@@ -423,7 +429,7 @@ export default function SmsSetup() {
             ))}
 
             <div style={{ padding: "0.85rem 1rem", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 8, fontSize: "0.82rem", color: "#92400e" }}>
-              By submitting, you confirm this information is accurate and that your messaging complies with TCPA, CTIA, and carrier guidelines. Approval typically takes <strong>1–3 business days</strong>.
+              By submitting, you confirm this information is accurate and complies with TCPA, CTIA, and carrier guidelines. We will automatically register your brand and campaign with Twilio — no Twilio dashboard needed. Approval typically takes <strong>1–3 business days</strong>.
             </div>
           </div>
         )}
