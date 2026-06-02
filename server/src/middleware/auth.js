@@ -1,6 +1,24 @@
 import jwt from "jsonwebtoken";
 import { prisma } from "../prisma/client.js";
 
+// Short-lived in-memory cache of resolved auth (user + business) keyed by token.
+// Skips a ~400ms DB join on every authenticated request. TTL is short so changes
+// (subscription status, settings) still propagate within a minute.
+const AUTH_TTL_MS = 60_000;
+const authCache = new Map(); // token -> { user, business, expires }
+
+export function invalidateAuthCache(token) {
+  if (token) authCache.delete(token);
+}
+
+function sweepCache() {
+  const now = Date.now();
+  for (const [token, entry] of authCache) {
+    if (entry.expires <= now) authCache.delete(token);
+  }
+  if (authCache.size > 5000) authCache.clear();
+}
+
 export async function requireAuth(req, res, next) {
   try {
     const header = req.headers.authorization || "";
@@ -8,6 +26,13 @@ export async function requireAuth(req, res, next) {
 
     if (!token) {
       return res.status(401).json({ error: "Missing authorization token" });
+    }
+
+    const cached = authCache.get(token);
+    if (cached && cached.expires > Date.now()) {
+      req.user = cached.user;
+      req.business = cached.business;
+      return next();
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
@@ -65,6 +90,9 @@ export async function requireAuth(req, res, next) {
     } else {
       req.business = null;
     }
+
+    authCache.set(token, { user: req.user, business: req.business, expires: Date.now() + AUTH_TTL_MS });
+    if (authCache.size % 64 === 0) sweepCache();
 
     return next();
   } catch (error) {

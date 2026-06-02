@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, ChevronLeft, ChevronRight, Clock, MapPin, Phone, User } from "lucide-react";
-import { api } from "../api/client.js";
+import { api, getCache, setCache } from "../api/client.js";
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -115,19 +115,21 @@ function AvailabilityBadge({ slot }) {
 }
 
 export default function CalendarPage() {
-  const [appointments, setAppointments] = useState([]);
-  const [availability, setAvailability] = useState([]);
+  const [appointments, setAppointments] = useState(() => getCache("appointments") || []);
+  const [availability, setAvailability] = useState(() => getCache("availability") || []);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selected, setSelected] = useState(new Date());
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !getCache("appointments"));
 
   useEffect(() => {
     Promise.all([
       api("/api/appointments"),
       api("/api/business/settings")
     ]).then(([apptData, bizData]) => {
-      setAppointments(apptData.appointments || []);
-      setAvailability(bizData.business?.availability || []);
+      const appts = apptData.appointments || [];
+      const avail = bizData.business?.availability || [];
+      setAppointments(appts); setCache("appointments", appts);
+      setAvailability(avail); setCache("availability", avail);
     }).finally(() => setLoading(false));
   }, []);
 
@@ -161,7 +163,15 @@ export default function CalendarPage() {
     .sort((a, b) => new Date(a.startAt) - new Date(b.startAt))
     .slice(0, 5);
 
-  if (loading) return <div className="page"><h1>Calendar</h1><p>Loading…</p></div>;
+  if (loading) return (
+    <div className="page">
+      <div className="page-header"><div><p className="eyebrow">Appointments & schedule</p><h1>Calendar</h1></div></div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: 18, alignItems: "start" }}>
+        <div className="skeleton" style={{ height: 360, borderRadius: 12 }} />
+        <div className="skeleton" style={{ height: 220, borderRadius: 12 }} />
+      </div>
+    </div>
+  );
 
   return (
     <div className="page">

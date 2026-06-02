@@ -2,8 +2,10 @@ import "dotenv/config";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-// Prefer public URL so Railway's internal DNS issues don't block startup
-if (process.env.DATABASE_PUBLIC_URL) {
+// Prefer the internal DATABASE_URL (fast, intra-datacenter on Railway). Only fall back
+// to the public proxy URL if no DATABASE_URL is configured. Using the public proxy in
+// production adds ~300-400ms latency per query.
+if (!process.env.DATABASE_URL && process.env.DATABASE_PUBLIC_URL) {
   process.env.DATABASE_URL = process.env.DATABASE_PUBLIC_URL;
 }
 

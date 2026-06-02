@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Navigate, Route, Routes, useNavigate, useSearchParams } from "react-router-dom";
-import { api, getToken, getUser, isSubscribed, setUser } from "./api/client.js";
+import { api, getToken, getUser, isSubscribed, setUser, setToken, PAYWALL_ENABLED } from "./api/client.js";
 import { Layout } from "./components/Layout.jsx";
 import Landing from "./pages/Pricing.jsx";
 import Login from "./pages/Login.jsx";
@@ -24,7 +24,9 @@ import CustomInvoice from "./pages/CustomInvoice.jsx";
 function ProtectedRoute() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [ready, setReady] = useState(false);
+  // Render the shell instantly if we already have a cached session — no blocking
+  // round-trip before the dashboard mounts. We still validate in the background.
+  const [ready, setReady] = useState(() => Boolean(getToken() && getUser()));
 
   useEffect(() => {
     if (!getToken()) {
@@ -46,17 +48,19 @@ function ProtectedRoute() {
       return;
     }
 
-    // Re-fetch user to get latest subscription status
+    // Validate the session in the background and refresh the cached user.
     api("/api/auth/me")
       .then((data) => {
         setUser(data.user);
-        if (data.user.subscriptionStatus !== "active") {
+        if (PAYWALL_ENABLED && data.user.subscriptionStatus !== "active") {
           navigate("/", { replace: true });
         } else {
           setReady(true);
         }
       })
       .catch(() => {
+        setToken(null);
+        setUser(null);
         navigate("/login", { replace: true });
       });
   }, []);

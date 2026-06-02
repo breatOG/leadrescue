@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api } from "../api/client.js";
+import { api, getCache, setCache } from "../api/client.js";
 import { Badge } from "../components/Layout.jsx";
 
 function toneForPriority(priority) {
@@ -11,13 +11,13 @@ function toneForPriority(priority) {
 }
 
 export default function Leads() {
-  const [leads, setLeads] = useState(null);
+  const [leads, setLeads] = useState(() => getCache("leads"));
   const [error, setError] = useState("");
 
   useEffect(() => {
     function load() {
       api("/api/leads")
-        .then((data) => setLeads(data.leads))
+        .then((data) => { setLeads(data.leads); setCache("leads", data.leads); })
         .catch((e) => setError(e.message));
     }
     load();
@@ -26,7 +26,14 @@ export default function Leads() {
   }, []);
 
   if (error) return <div className="page"><h1>Leads</h1><p style={{ color: "#ef4444" }}>{error}</p></div>;
-  if (leads === null) return <div className="page"><h1>Leads</h1><p>Loading...</p></div>;
+  if (leads === null) return (
+    <div className="page">
+      <div className="page-header"><div><p className="eyebrow">Pipeline</p><h1>Leads</h1></div></div>
+      <section className="panel">
+        {[0, 1, 2, 3, 4, 5].map((i) => <div key={i} className="skeleton skeleton-row" />)}
+      </section>
+    </div>
+  );
 
   return (
     <div className="page">

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { api, setToken, setUser } from "../api/client.js";
+import { api, setToken, setUser, PAYWALL_ENABLED } from "../api/client.js";
 import AuthLayout from "../components/AuthLayout.jsx";
 import PasswordInput from "../components/PasswordInput.jsx";
 
@@ -18,7 +18,7 @@ export default function Login() {
       const data = await api("/api/auth/login", { method: "POST", body: form });
       setToken(data.token);
       setUser(data.user);
-      navigate(data.user?.subscriptionStatus === "active" ? "/dashboard" : "/subscribe");
+      navigate(!PAYWALL_ENABLED || data.user?.subscriptionStatus === "active" ? "/dashboard" : "/subscribe");
     } catch (err) {
       setError(err.message);
     } finally {

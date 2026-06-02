@@ -1,5 +1,28 @@
 const API_URL = import.meta.env.VITE_API_URL || "";
 
+// Paywall toggle. Set to false to let any logged-in user into the app without an
+// active subscription (handy while building). Flip to true to re-enable the gate.
+export const PAYWALL_ENABLED = false;
+
+// Stale-while-revalidate cache: render last-known data instantly, refresh in the
+// background. Used by Dashboard/Leads so navigation isn't blocked on a slow round-trip.
+export function getCache(key) {
+  try {
+    const raw = localStorage.getItem(`lr_cache_${key}`);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setCache(key, value) {
+  try {
+    localStorage.setItem(`lr_cache_${key}`, JSON.stringify(value));
+  } catch {
+    /* ignore quota / serialization errors */
+  }
+}
+
 export function getToken() {
   return localStorage.getItem("leadrescue_token");
 }
@@ -24,6 +47,7 @@ export function setUser(user) {
 }
 
 export function isSubscribed() {
+  if (!PAYWALL_ENABLED) return true;
   const user = getUser();
   return user?.subscriptionStatus === "active";
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { api } from "../api/client.js";
+import { api, getCache, setCache } from "../api/client.js";
 import { Badge } from "../components/Layout.jsx";
 
 function Field({ label, value }) {
@@ -21,7 +21,7 @@ function channelIcon(channel) {
 
 export default function LeadDetail() {
   const { id } = useParams();
-  const [lead, setLead] = useState(null);
+  const [lead, setLead] = useState(() => getCache(`lead_${id}`));
   const [manualMessage, setManualMessage] = useState("");
   const [notes, setNotes] = useState("");
 
@@ -29,9 +29,14 @@ export default function LeadDetail() {
     const data = await api(`/api/leads/${id}`);
     setLead(data.lead);
     setNotes(data.lead.manualNotes || "");
+    setCache(`lead_${id}`, data.lead);
   }
 
   useEffect(() => {
+    // Render instantly from cache (or reset to skeleton when switching leads), then refresh.
+    const cached = getCache(`lead_${id}`);
+    setLead(cached);
+    if (cached) setNotes(cached.manualNotes || "");
     loadLead();
     const interval = setInterval(loadLead, 15000);
     return () => clearInterval(interval);
@@ -55,7 +60,18 @@ export default function LeadDetail() {
     await loadLead();
   }
 
-  if (!lead) return <div className="page"><h1>Lead</h1><p>Loading...</p></div>;
+  if (!lead) return (
+    <div className="page detail-grid">
+      <section className="panel">
+        <div className="skeleton" style={{ height: 26, width: "55%", marginBottom: 18 }} />
+        {[0, 1, 2, 3, 4].map((i) => <div key={i} className="skeleton skeleton-row" />)}
+      </section>
+      <section className="panel">
+        <div className="skeleton" style={{ height: 20, width: "40%", marginBottom: 16 }} />
+        {[0, 1, 2].map((i) => <div key={i} className="skeleton" style={{ height: 60, marginBottom: 12, borderRadius: 8 }} />)}
+      </section>
+    </div>
+  );
 
   const visibleMessages = lead.messages.filter((m) => m.body !== "[call started]");
 

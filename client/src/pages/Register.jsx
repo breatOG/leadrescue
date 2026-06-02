@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { api, setToken, setUser } from "../api/client.js";
+import { api, setToken, setUser, PAYWALL_ENABLED } from "../api/client.js";
 import AuthLayout from "../components/AuthLayout.jsx";
 import PhoneInput, { phoneDigits } from "../components/PhoneInput.jsx";
 import PasswordInput from "../components/PasswordInput.jsx";
@@ -29,7 +29,7 @@ export default function Register() {
       });
       setToken(data.token);
       setUser(data.user);
-      navigate(plan ? `/subscribe?plan=${plan}` : "/subscribe");
+      navigate(!PAYWALL_ENABLED ? "/dashboard" : plan ? `/subscribe?plan=${plan}` : "/subscribe");
     } catch (err) {
       setError(err.message);
     } finally {

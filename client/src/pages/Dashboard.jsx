@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, ArrowRight, CalendarCheck, MessageCircle, PhoneMissed, TrendingUp, Zap } from "lucide-react";
-import { api } from "../api/client.js";
+import { api, getCache, setCache } from "../api/client.js";
 import { Badge } from "../components/Layout.jsx";
 
 // ── Stat card ────────────────────────────────────────────────────────────────
@@ -88,14 +88,14 @@ function timeAgo(date) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function Dashboard() {
-  const [data, setData] = useState(null);
-  const [usage, setUsage] = useState(null);
+  const [data, setData] = useState(() => getCache("dashboard"));
+  const [usage, setUsage] = useState(() => getCache("usage"));
   const [error, setError] = useState("");
 
   useEffect(() => {
     function load() {
-      api("/api/dashboard").then(setData).catch((e) => setError(e.message));
-      api("/api/payments/usage").then(setUsage).catch(() => {});
+      api("/api/dashboard").then((d) => { setData(d); setCache("dashboard", d); }).catch((e) => setError(e.message));
+      api("/api/payments/usage").then((u) => { setUsage(u); setCache("usage", u); }).catch(() => {});
     }
     load();
     const interval = setInterval(load, 15000);
@@ -108,7 +108,19 @@ export default function Dashboard() {
       <div style={{ padding: "18px 20px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 12, color: "#b91c1c", fontSize: "0.9rem" }}>{error}</div>
     </div>
   );
-  if (!data) return <div className="page"><h1>Dashboard</h1><p style={{ color: "#64748b" }}>Loading...</p></div>;
+  if (!data) return (
+    <div className="page">
+      <div className="page-header" style={{ marginBottom: 24 }}>
+        <div><p className="eyebrow">Command center</p><h1 style={{ margin: 0 }}>Dashboard</h1></div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 20 }}>
+        {[0, 1, 2, 3].map((i) => <div key={i} className="skeleton" style={{ height: 116, borderRadius: 14 }} />)}
+      </div>
+      <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 14, padding: 24 }}>
+        {[0, 1, 2, 3].map((i) => <div key={i} className="skeleton skeleton-row" />)}
+      </div>
+    </div>
+  );
 
   const hasConversations = data.recentConversations.length > 0;
 
