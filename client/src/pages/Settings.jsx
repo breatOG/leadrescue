@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { CheckCircle, MessageSquare, Phone, RefreshCw, Search, ShieldCheck, Zap } from "lucide-react";
-import { api } from "../api/client.js";
+import { api, getCache, setCache } from "../api/client.js";
 
 const PLAN_FEATURES = {
   starter: {
@@ -54,13 +54,13 @@ const PLAN_CARDS = [
 ];
 
 function SubscriptionPanel() {
-  const [usage, setUsage] = useState(null);
+  const [usage, setUsage] = useState(() => getCache("usage"));
   const [portalLoading, setPortalLoading] = useState(false);
   const [switching, setSwitching] = useState(null);
   const [msg, setMsg] = useState("");
   const [msgOk, setMsgOk] = useState(false);
 
-  useEffect(() => { api("/api/payments/usage").then(setUsage).catch(() => {}); }, []);
+  useEffect(() => { api("/api/payments/usage").then((d) => { setUsage(d); setCache("usage", d); }).catch(() => {}); }, []);
 
   async function openPortal() {
     setMsg(""); setPortalLoading(true);
@@ -137,7 +137,7 @@ function SubscriptionPanel() {
       </div>
 
       {/* Included features */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 20px", marginBottom: 22 }}>
+      <div className="m-2col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 20px", marginBottom: 22 }}>
         {info.features.map((f) => (
           <div key={f} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: "0.82rem", color: "#16a34a" }}>
             <CheckCircle size={13} style={{ flexShrink: 0 }} />{f}
@@ -153,7 +153,7 @@ function SubscriptionPanel() {
       {/* Plan switcher */}
       <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: 18 }}>
         <p style={{ margin: "0 0 12px", fontSize: "0.78rem", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em" }}>Change plan</p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+        <div className="m-plans" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
           {PLAN_CARDS.map((pc) => {
             const isCurrent = plan === pc.key;
             return (
@@ -344,11 +344,11 @@ function TwilioPhonePanel({ currentNumber, onProvisioned }) {
 }
 
 function SmsStatusPanel() {
-  const [status, setStatus] = useState(null);
+  const [status, setStatus] = useState(() => getCache("smsStatus"));
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    api("/api/sms-registration").then((d) => setStatus(d.smsStatus)).catch(() => {});
+    api("/api/sms-registration").then((d) => { setStatus(d.smsStatus); setCache("smsStatus", d.smsStatus); }).catch(() => {});
   }, []);
 
   async function refresh() {
@@ -471,7 +471,7 @@ function MemberRow({ user: u, onRemove, onPermissionsChange }) {
       {expanded && !isOwner && (
         <div style={{ padding: "14px 16px", background: "#f9fafb", borderTop: "1px solid var(--line)" }}>
           <p style={{ margin: "0 0 12px", fontSize: "0.8rem", color: "var(--muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>Permissions</p>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
+          <div className="m-2col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
             {PERMS.map(({ key, label, desc }) => {
               const on = perms.includes(key);
               return (
@@ -498,8 +498,9 @@ function MemberRow({ user: u, onRemove, onPermissionsChange }) {
 }
 
 function UserManagement() {
-  const [users, setUsers] = useState([]);
-  const [invitations, setInvitations] = useState([]);
+  const cachedTeam = getCache("team");
+  const [users, setUsers] = useState(() => cachedTeam?.users || []);
+  const [invitations, setInvitations] = useState(() => cachedTeam?.invitations || []);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteName, setInviteName] = useState("");
   const [inviteMsg, setInviteMsg] = useState("");
@@ -512,8 +513,10 @@ function UserManagement() {
       api("/api/auth/users").catch(() => ({ users: [] })),
       api("/api/invites").catch(() => ({ invitations: [] }))
     ]);
-    setUsers(ud.users || []);
-    setInvitations(id.invitations || []);
+    const u = ud.users || [], inv = id.invitations || [];
+    setUsers(u);
+    setInvitations(inv);
+    setCache("team", { users: u, invitations: inv });
   }
 
   useEffect(() => { load(); }, []);
@@ -677,7 +680,7 @@ function AvailabilityEditor({ availability, onChange }) {
             </div>
             <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
               {byDay[day].map((slot) => (
-                <div key={slot._idx} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 130px 36px", gap: 8, alignItems: "end" }}>
+                <div key={slot._idx} className="m-slot" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 130px 36px", gap: 8, alignItems: "end" }}>
                   <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "0.76rem", fontWeight: 700, color: "#64748b" }}>
                     Start time
                     <input type="time" value={slot.startTime} onChange={(e) => updateBlock(slot._idx, "startTime", e.target.value)} style={{ padding: "8px 10px", border: "1px solid var(--line)", borderRadius: 8, fontSize: "0.88rem", background: "#fff" }} />
@@ -716,19 +719,21 @@ const defaultAvailability = [1, 2, 3, 4, 5].flatMap((dayOfWeek) => [
 ]);
 
 export default function Settings() {
-  const [form, setForm] = useState(null);
+  const [form, setForm] = useState(() => getCache("settingsForm"));
   const [saved, setSaved] = useState(false);
   const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     api("/api/business/settings")
       .then(({ business }) => {
-        setForm({
+        const next = {
           ...business,
           serviceAreasText: business.serviceAreas.join(", "),
           serviceTypesText: business.serviceTypes.map((type) => type.name).join(", "),
           availability: business.availability.length ? business.availability : defaultAvailability
-        });
+        };
+        setForm(next);
+        setCache("settingsForm", next);
       })
       .catch((e) => setLoadError(e.message));
   }, []);
@@ -759,7 +764,12 @@ export default function Settings() {
   }
 
   if (loadError) return <div className="page"><h1>Settings</h1><p style={{ color: "#ef4444" }}>{loadError}</p></div>;
-  if (!form) return <div className="page"><h1>Settings</h1><p>Loading...</p></div>;
+  if (!form) return (
+    <div className="page">
+      <div className="page-header"><div><p className="eyebrow">Business profile</p><h1>Settings</h1></div></div>
+      {[160, 120, 120].map((h, i) => <div key={i} className="skeleton" style={{ height: h, borderRadius: 14, marginBottom: 18 }} />)}
+    </div>
+  );
 
   return (
     <div className="page">

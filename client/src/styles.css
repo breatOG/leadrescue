@@ -1027,3 +1027,303 @@ button.small {
     transform: translateX(100%);
   }
 }
+
+/* ============================================================
+   Mobile app shell — top bar + bottom tab nav
+   ============================================================ */
+.mobile-topbar,
+.mobile-bottomnav {
+  display: none;
+}
+
+.icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  border: none;
+  background: transparent;
+  color: #475569;
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+.icon-btn:active {
+  background: #f1f5f9;
+}
+
+@media (max-width: 900px) {
+  .app-shell {
+    display: block;
+    min-height: 100vh;
+  }
+
+  .sidebar {
+    display: none;
+  }
+
+  .mobile-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 11px 16px;
+    background: rgba(255, 255, 255, 0.88);
+    backdrop-filter: saturate(180%) blur(10px);
+    -webkit-backdrop-filter: saturate(180%) blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .mobile-topbar .brand {
+    font-size: 1.05rem;
+  }
+
+  .mobile-bottomnav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: saturate(180%) blur(12px);
+    -webkit-backdrop-filter: saturate(180%) blur(12px);
+    border-top: 1px solid var(--line);
+    padding: 7px 6px calc(7px + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -4px 20px rgba(15, 23, 42, 0.05);
+  }
+
+  .mobile-bottomnav a {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 5px 0;
+    border-radius: 10px;
+    color: #94a3b8;
+    font-size: 0.66rem;
+    font-weight: 750;
+    letter-spacing: 0.01em;
+    text-decoration: none;
+    transition: color 0.15s;
+  }
+
+  .mobile-bottomnav a.active {
+    color: var(--accent);
+  }
+
+  .mobile-bottomnav a.active svg {
+    transform: translateY(-1px);
+  }
+
+  .main-panel {
+    padding-bottom: calc(74px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .page {
+    padding: 18px 16px;
+  }
+
+  .page h1 {
+    font-size: 1.6rem;
+  }
+
+  /* Responsive grid overrides (keyed off small classNames so inline-styled
+     grids can collapse on mobile). */
+  .m-stats { grid-template-columns: repeat(2, 1fr) !important; }
+  .m-cal   { grid-template-columns: 1fr !important; }
+  .m-plans { grid-template-columns: 1fr !important; }
+  .m-slot  { grid-template-columns: 1fr 1fr !important; }
+}
+
+@media (max-width: 560px) {
+  .m-2col { grid-template-columns: 1fr !important; }
+}
+
+/* ============================================================
+   Leads — inbox-style cards on mobile (table on desktop)
+   ============================================================ */
+.leads-cards {
+  display: none;
+}
+
+.lead-card {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  text-decoration: none;
+  color: inherit;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+
+.lead-card:active {
+  background: #f8fafc;
+}
+
+.lead-card-avatar {
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f1f5f9;
+  color: #475569;
+  font-weight: 800;
+  font-size: 0.95rem;
+  border: 2px solid #e2e8f0;
+}
+
+.lead-card-avatar[data-priority="emergency"] { border-color: #fca5a5; color: #b91c1c; }
+.lead-card-avatar[data-priority="high"]      { border-color: #fdba74; color: #9a3412; }
+.lead-card-avatar[data-priority="normal"]    { border-color: #99e6cf; }
+
+.lead-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.lead-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.lead-card-name {
+  font-weight: 750;
+  font-size: 0.96rem;
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lead-card-date {
+  flex-shrink: 0;
+  font-size: 0.74rem;
+  color: #94a3b8;
+}
+
+.lead-card-sub {
+  font-size: 0.8rem;
+  color: #64748b;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lead-card-msg {
+  font-size: 0.83rem;
+  color: #94a3b8;
+  margin-top: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lead-card-tags {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 720px) {
+  .leads-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .leads-table-wrap {
+    display: none;
+  }
+}
+
+/* ============================================================
+   Lead detail — lighter, less boxy on mobile
+   ============================================================ */
+@media (max-width: 720px) {
+  .detail-grid {
+    gap: 14px;
+  }
+
+  .detail-grid .panel {
+    padding: 16px;
+  }
+
+  /* Status / Priority / Source become a compact inline chip row (badge = the chip) */
+  .detail-grid .field-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+  }
+
+  .detail-grid .field-grid > span {
+    display: inline-flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    border: none;
+    padding: 0;
+    background: transparent;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--muted);
+  }
+
+  /* Customer / job fields: clean underlined rows instead of boxes */
+  .detail-field {
+    padding: 9px 0;
+    border: none;
+    border-radius: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .detail-fields .detail-field:last-child {
+    border-bottom: none;
+  }
+
+  .page.detail-grid h2 {
+    margin: 18px 0 8px;
+    font-size: 0.95rem;
+  }
+}
+
+/* ============================================================
+   Landing page (Pricing.jsx) — mobile
+   ============================================================ */
+@media (max-width: 860px) {
+  .lp-hero {
+    grid-template-columns: 1fr !important;
+    gap: 44px !important;
+    padding: 48px 20px 36px !important;
+  }
+
+  .lp-stats {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 30px 16px !important;
+  }
+
+  .lp-grid-2,
+  .lp-grid-3 {
+    grid-template-columns: 1fr !important;
+  }
+
+  .lp-section {
+    padding-top: 56px !important;
+    padding-bottom: 56px !important;
+    padding-left: 20px !important;
+    padding-right: 20px !important;
+  }
+}

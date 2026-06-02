@@ -113,7 +113,7 @@ export default function Dashboard() {
       <div className="page-header" style={{ marginBottom: 24 }}>
         <div><p className="eyebrow">Command center</p><h1 style={{ margin: 0 }}>Dashboard</h1></div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 20 }}>
+      <div className="m-stats" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 20 }}>
         {[0, 1, 2, 3].map((i) => <div key={i} className="skeleton" style={{ height: 116, borderRadius: 14 }} />)}
       </div>
       <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 14, padding: 24 }}>
@@ -137,7 +137,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 20 }}>
+      <div className="m-stats" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 20 }}>
         <StatCard label="Total leads" value={data.totalLeads} icon={<MessageCircle size={19} />} color="blue" />
         <StatCard label="Calls recovered" value={data.missedCallsRecovered} icon={<PhoneMissed size={19} />} color="green" />
         <StatCard label="Appointments booked" value={data.appointmentsBooked} icon={<CalendarCheck size={19} />} color="purple" />

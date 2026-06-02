@@ -166,7 +166,7 @@ export default function CalendarPage() {
   if (loading) return (
     <div className="page">
       <div className="page-header"><div><p className="eyebrow">Appointments & schedule</p><h1>Calendar</h1></div></div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: 18, alignItems: "start" }}>
+      <div className="m-cal" style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: 18, alignItems: "start" }}>
         <div className="skeleton" style={{ height: 360, borderRadius: 12 }} />
         <div className="skeleton" style={{ height: 220, borderRadius: 12 }} />
       </div>
@@ -194,7 +194,7 @@ export default function CalendarPage() {
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: 18, alignItems: "start" }}>
+      <div className="m-cal" style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: 18, alignItems: "start" }}>
         {/* Month grid */}
         <div>
           <div className="panel" style={{ marginBottom: 18 }}>

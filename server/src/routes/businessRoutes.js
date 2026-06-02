@@ -2,7 +2,12 @@ import express from "express";
 import asyncHandler from "express-async-handler";
 import twilio from "twilio";
 import { prisma } from "../prisma/client.js";
-import { requireAuth } from "../middleware/auth.js";
+import { requireAuth, invalidateAuthCache } from "../middleware/auth.js";
+
+function tokenFrom(req) {
+  const header = req.headers.authorization || "";
+  return header.startsWith("Bearer ") ? header.slice(7) : null;
+}
 
 function getTwilioAdminClient() {
   const sid = process.env.TWILIO_ACCOUNT_SID;
@@ -19,11 +24,21 @@ router.use(requireAuth);
 router.get(
   "/settings",
   asyncHandler(async (req, res) => {
-    const business = await prisma.business.findUnique({
-      where: { id: req.business.id },
-      include: { serviceTypes: true, availability: { orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }] }, subscriptionPlan: true }
-    });
-    res.json({ business });
+    // requireAuth already loads the business with its relations, so reuse it and skip
+    // a redundant DB round-trip. Fall back to a query only if relations are missing.
+    let business = req.business;
+    if (!business || business.serviceTypes === undefined || business.availability === undefined) {
+      business = await prisma.business.findUnique({
+        where: { id: req.business.id },
+        include: { serviceTypes: true, availability: true, subscriptionPlan: true }
+      });
+    }
+
+    const availability = [...(business.availability || [])].sort(
+      (a, b) => a.dayOfWeek - b.dayOfWeek || a.startTime.localeCompare(b.startTime)
+    );
+
+    res.json({ business: { ...business, availability } });
   })
 );
 
@@ -71,6 +86,9 @@ router.put(
       },
       include: { serviceTypes: true, availability: true, subscriptionPlan: true }
     });
+
+    // Business changed — drop the cached auth so the next request reloads fresh data.
+    invalidateAuthCache(tokenFrom(req));
 
     res.json({ business });
   })
@@ -133,6 +151,7 @@ router.post(
       where: { id: req.business.id },
       data: { twilioPhoneNumber: purchased.phoneNumber }
     });
+    invalidateAuthCache(tokenFrom(req));
 
     console.log(`[twilio] Provisioned ${purchased.phoneNumber} for business ${req.business.id}`);
     res.json({ phoneNumber: purchased.phoneNumber, sid: purchased.sid });
@@ -176,6 +195,7 @@ router.post(
       where: { id: req.business.id },
       data: { twilioPhoneNumber: number.phoneNumber }
     });
+    invalidateAuthCache(tokenFrom(req));
 
     console.log(`[twilio] Connected existing number ${number.phoneNumber} to business ${req.business.id}`);
     res.json({ phoneNumber: number.phoneNumber });

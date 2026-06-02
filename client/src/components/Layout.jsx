@@ -44,6 +44,13 @@ const banner = {
   close: { background: "transparent", border: "none", color: "#92400e", cursor: "pointer", display: "flex", padding: 4 },
 };
 
+const NAV_ITEMS = [
+  { to: "/dashboard", label: "Dashboard", Icon: LayoutDashboard },
+  { to: "/leads", label: "Leads", Icon: Table2 },
+  { to: "/calendar", label: "Calendar", Icon: CalendarRange },
+  { to: "/settings", label: "Settings", Icon: Settings }
+];
+
 export function Layout() {
   const navigate = useNavigate();
 
@@ -55,23 +62,43 @@ export function Layout() {
 
   return (
     <div className="app-shell">
+      {/* Desktop sidebar */}
       <aside className="sidebar">
         <Link className="brand" to="/dashboard">
           <span className="brand-mark">LR</span>
           <span>LeadRescue</span>
         </Link>
         <nav>
-          <NavLink to="/dashboard"><LayoutDashboard size={18} /> Dashboard</NavLink>
-          <NavLink to="/leads"><Table2 size={18} /> Leads</NavLink>
-          <NavLink to="/calendar"><CalendarRange size={18} /> Calendar</NavLink>
-          <NavLink to="/settings"><Settings size={18} /> Settings</NavLink>
+          {NAV_ITEMS.map(({ to, label, Icon }) => (
+            <NavLink key={to} to={to}><Icon size={18} /> {label}</NavLink>
+          ))}
         </nav>
         <button className="ghost full" onClick={logout}><LogOut size={18} /> Logout</button>
       </aside>
+
+      {/* Mobile top bar */}
+      <header className="mobile-topbar">
+        <Link className="brand" to="/dashboard">
+          <span className="brand-mark">LR</span>
+          <span>LeadRescue</span>
+        </Link>
+        <button className="icon-btn" onClick={logout} aria-label="Log out"><LogOut size={20} /></button>
+      </header>
+
       <main className="main-panel">
         <VerifyEmailBanner />
         <Outlet />
       </main>
+
+      {/* Mobile bottom tab bar */}
+      <nav className="mobile-bottomnav">
+        {NAV_ITEMS.map(({ to, label, Icon }) => (
+          <NavLink key={to} to={to}>
+            <Icon size={21} />
+            <span>{label}</span>
+          </NavLink>
+        ))}
+      </nav>
     </div>
   );
 }

@@ -185,7 +185,7 @@ export default function Landing() {
           <div style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)", backgroundSize: "60px 60px" }} />
         </div>
 
-        <div style={{ maxWidth: 1120, margin: "0 auto", padding: "80px 24px", display: "grid", gridTemplateColumns: "minmax(0,1.1fr) minmax(0,0.9fr)", gap: 60, alignItems: "center", width: "100%", position: "relative" }}>
+        <div className="lp-hero" style={{ maxWidth: 1120, margin: "0 auto", padding: "80px 24px", display: "grid", gridTemplateColumns: "minmax(0,1.1fr) minmax(0,0.9fr)", gap: 60, alignItems: "center", width: "100%", position: "relative" }}>
           <div style={{ opacity: heroVisible ? 1 : 0, transform: heroVisible ? "none" : "translateY(30px)", transition: "all 0.8s cubic-bezier(0.16,1,0.3,1)" }}>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.3)", borderRadius: 99, padding: "6px 14px", fontSize: "0.78rem", fontWeight: 700, color: "#6ee7b7", marginBottom: 28, letterSpacing: "0.04em", textTransform: "uppercase" }}>
               <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#10b981", animation: "pulse-dot 2s infinite" }} />
@@ -225,8 +225,8 @@ export default function Landing() {
       </section>
 
       {/* ── STATS ───────────────────────────────────────────────────────────── */}
-      <section ref={statsRef} style={{ borderTop: "1px solid rgba(255,255,255,0.06)", borderBottom: "1px solid rgba(255,255,255,0.06)", padding: "60px 24px" }}>
-        <div style={{ maxWidth: 900, margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 40 }}>
+      <section ref={statsRef} className="lp-section" style={{ borderTop: "1px solid rgba(255,255,255,0.06)", borderBottom: "1px solid rgba(255,255,255,0.06)", padding: "60px 24px" }}>
+        <div className="lp-stats" style={{ maxWidth: 900, margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 40 }}>
           {[
             { val: 2, suf: " min", label: "Avg. response time" },
             { val: 94, suf: "%", label: "Lead qualification rate" },
@@ -244,7 +244,7 @@ export default function Landing() {
       </section>
 
       {/* ── FEATURES ────────────────────────────────────────────────────────── */}
-      <section ref={featRef} style={{ padding: "100px 24px" }}>
+      <section ref={featRef} className="lp-section" style={{ padding: "100px 24px" }}>
         <div style={{ maxWidth: 1120, margin: "0 auto" }}>
           <div style={{ textAlign: "center", marginBottom: 64 }}>
             <div style={{ display: "inline-block", background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 99, padding: "5px 14px", fontSize: "0.75rem", fontWeight: 700, color: "#6ee7b7", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 16 }}>
@@ -253,7 +253,7 @@ export default function Landing() {
             <h2 style={{ margin: "0 0 16px", fontSize: "clamp(1.8rem, 4vw, 3rem)", fontWeight: 900, letterSpacing: "-0.02em" }}>Your business, running 24/7</h2>
             <p style={{ color: "#64748b", fontSize: "1.05rem", maxWidth: 560, margin: "0 auto" }}>From the first ring to the signed job — LeadRescue handles every step automatically.</p>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 20 }}>
+          <div className="lp-grid-2" style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 20 }}>
             {features.map((f, i) => (
               <div key={i} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: "32px", transition: "all 0.3s", cursor: "default", opacity: featVisible ? 1 : 0, transform: featVisible ? "none" : "translateY(30px)", transitionDelay: `${i * 0.12}s` }}
                 onMouseEnter={e => { e.currentTarget.style.background = "rgba(16,185,129,0.06)"; e.currentTarget.style.borderColor = "rgba(16,185,129,0.25)"; e.currentTarget.style.transform = "translateY(-4px)"; }}
@@ -268,13 +268,13 @@ export default function Landing() {
       </section>
 
       {/* ── TESTIMONIALS ────────────────────────────────────────────────────── */}
-      <section ref={testimonialsRef} style={{ padding: "80px 24px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+      <section ref={testimonialsRef} className="lp-section" style={{ padding: "80px 24px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
         <div style={{ maxWidth: 1120, margin: "0 auto" }}>
           <div style={{ textAlign: "center", marginBottom: 56 }}>
             <h2 style={{ margin: "0 0 12px", fontSize: "clamp(1.6rem, 3.5vw, 2.4rem)", fontWeight: 900, letterSpacing: "-0.02em" }}>Contractors love it</h2>
             <p style={{ color: "#64748b", fontSize: "0.95rem" }}>Real results from real businesses.</p>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
+          <div className="lp-grid-3" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
             {testimonials.map((t, i) => (
               <div key={i} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: "28px 24px", opacity: testimonialsVisible ? 1 : 0, transform: testimonialsVisible ? "none" : "translateY(20px)", transition: `all 0.6s ${i * 0.15}s` }}>
                 <div style={{ color: "#10b981", fontSize: "1.8rem", marginBottom: 12, lineHeight: 1 }}>"</div>
@@ -290,14 +290,14 @@ export default function Landing() {
       </section>
 
       {/* ── PRICING ─────────────────────────────────────────────────────────── */}
-      <section id="pricing" ref={pricingRef} style={{ padding: "100px 24px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+      <section id="pricing" ref={pricingRef} className="lp-section" style={{ padding: "100px 24px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
         <div style={{ maxWidth: 1120, margin: "0 auto" }}>
           <div style={{ textAlign: "center", marginBottom: 64 }}>
             <div style={{ display: "inline-block", background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 99, padding: "5px 14px", fontSize: "0.75rem", fontWeight: 700, color: "#6ee7b7", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 16 }}>Pricing</div>
             <h2 style={{ margin: "0 0 12px", fontSize: "clamp(1.8rem, 4vw, 2.8rem)", fontWeight: 900, letterSpacing: "-0.02em" }}>Simple, transparent pricing</h2>
             <p style={{ color: "#64748b", fontSize: "1rem" }}>Start free. No contracts. Cancel anytime.</p>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
+          <div className="lp-grid-3" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
             {plans.map((plan, i) => (
               <div key={plan.name} style={{
                 background: plan.highlight ? "linear-gradient(160deg, rgba(16,185,129,0.15) 0%, rgba(16,185,129,0.05) 100%)" : "rgba(255,255,255,0.03)",
@@ -337,7 +337,7 @@ export default function Landing() {
       </section>
 
       {/* ── CTA STRIP ───────────────────────────────────────────────────────── */}
-      <section style={{ padding: "80px 24px", textAlign: "center", background: "linear-gradient(180deg, transparent, rgba(16,185,129,0.05))" }}>
+      <section className="lp-section" style={{ padding: "80px 24px", textAlign: "center", background: "linear-gradient(180deg, transparent, rgba(16,185,129,0.05))" }}>
         <h2 style={{ margin: "0 0 16px", fontSize: "clamp(1.8rem, 4vw, 2.8rem)", fontWeight: 950, letterSpacing: "-0.025em" }}>Ready to stop missing leads?</h2>
         <p style={{ color: "#64748b", fontSize: "1.05rem", marginBottom: 36 }}>Set up in under 5 minutes. No credit card required to start.</p>
         <Link to="/register" style={{ background: "linear-gradient(135deg,#10b981,#059669)", color: "#fff", fontWeight: 800, fontSize: "1.05rem", padding: "16px 36px", borderRadius: 14, textDecoration: "none", boxShadow: "0 8px 28px rgba(16,185,129,0.45)", display: "inline-flex", alignItems: "center", gap: 10, transition: "transform 0.1s, box-shadow 0.15s" }} onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 12px 36px rgba(16,185,129,0.6)"; }} onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = "0 8px 28px rgba(16,185,129,0.45)"; }}>

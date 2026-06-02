@@ -43,9 +43,35 @@ export default function Leads() {
           <h1>Leads</h1>
         </div>
       </div>
-      <section className="panel">
+      {/* Mobile: clean inbox-style cards */}
+      <div className="leads-cards">
+        {leads.map((lead) => (
+          <Link key={lead.id} to={`/leads/${lead.id}`} className="lead-card">
+            <div className="lead-card-avatar" data-priority={lead.priority}>
+              {(lead.customerName || lead.customerPhone || "?")[0].toUpperCase()}
+            </div>
+            <div className="lead-card-body">
+              <div className="lead-card-head">
+                <span className="lead-card-name">{lead.customerName || lead.customerPhone}</span>
+                <span className="lead-card-date">{new Date(lead.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
+              </div>
+              <div className="lead-card-sub">
+                {lead.source === "missed_call" ? "📞" : "💬"} {lead.jobType || "Unqualified lead"}
+              </div>
+              <div className="lead-card-msg">{lead.lastMessage || "No messages yet"}</div>
+              <div className="lead-card-tags">
+                <Badge tone={toneForPriority(lead.priority)}>{lead.priority}</Badge>
+                <Badge>{lead.status.replace("_", " ")}</Badge>
+              </div>
+            </div>
+          </Link>
+        ))}
+      </div>
+
+      {/* Desktop: table */}
+      <section className="panel leads-table-wrap">
         <div className="table-wrap">
-          <table>
+          <table className="leads-table">
             <thead>
               <tr>
                 <th>Status</th>
@@ -60,17 +86,21 @@ export default function Leads() {
             <tbody>
               {leads.map((lead) => (
                 <tr key={lead.id}>
-                  <td><Link to={`/leads/${lead.id}`}><Badge>{lead.status.replace("_", " ")}</Badge></Link></td>
-                  <td><Badge tone={toneForPriority(lead.priority)}>{lead.priority}</Badge></td>
-                  <td>
-                    <span title={lead.source === "missed_call" ? "Voice call" : "SMS"}>{lead.source === "missed_call" ? "📞 " : "💬 "}</span>
-                    {lead.customerName || lead.customerPhone}
-                    {lead.customerName && <span style={{color:"var(--muted)",fontSize:"0.8em",display:"block"}}>{lead.customerPhone}</span>}
+                  <td data-label="Status"><Link to={`/leads/${lead.id}`}><Badge>{lead.status.replace("_", " ")}</Badge></Link></td>
+                  <td data-label="Priority"><Badge tone={toneForPriority(lead.priority)}>{lead.priority}</Badge></td>
+                  <td data-label="Customer">
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>
+                      <span title={lead.source === "missed_call" ? "Voice call" : "SMS"}>{lead.source === "missed_call" ? "📞 " : "💬 "}</span>
+                      <span>
+                        {lead.customerName || lead.customerPhone}
+                        {lead.customerName && <span style={{ color: "var(--muted)", fontSize: "0.8em", display: "block" }}>{lead.customerPhone}</span>}
+                      </span>
+                    </span>
                   </td>
-                  <td>{lead.jobType || <span style={{color:"var(--muted)"}}>Unqualified</span>}</td>
-                  <td>{lead.urgency || <span style={{color:"var(--muted)"}}>—</span>}</td>
-                  <td className="truncate">{lead.lastMessage || "No messages yet"}</td>
-                  <td>{new Date(lead.createdAt).toLocaleDateString()}</td>
+                  <td data-label="Job / Issue">{lead.jobType || <span style={{color:"var(--muted)"}}>Unqualified</span>}</td>
+                  <td data-label="Urgency">{lead.urgency || <span style={{color:"var(--muted)"}}>—</span>}</td>
+                  <td className="truncate" data-label="Last message">{lead.lastMessage || "No messages yet"}</td>
+                  <td data-label="Created">{new Date(lead.createdAt).toLocaleDateString()}</td>
                 </tr>
               ))}
             </tbody>
