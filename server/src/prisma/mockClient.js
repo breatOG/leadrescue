@@ -30,6 +30,8 @@ const business = {
   businessPhoneNumber: "+15557654321",
   ownerNotificationPhone: "",
   ownerNotificationEmail: "demo@leadrescue.local",
+  callHandlingMode: "ring_first",
+  ringSeconds: 15,
   serviceAreas: ["Indianapolis", "Carmel", "Fishers"],
   businessHours: {
     monday: "8:00 AM - 5:00 PM",
@@ -195,6 +197,8 @@ function createBusiness(data, ownerId) {
     businessPhoneNumber: data.businessPhoneNumber || "",
     ownerNotificationPhone: data.ownerNotificationPhone || "",
     ownerNotificationEmail: data.ownerNotificationEmail || "",
+    callHandlingMode: data.callHandlingMode || "ring_first",
+    ringSeconds: data.ringSeconds || 15,
     serviceAreas: data.serviceAreas || [],
     businessHours: data.businessHours || {},
     createdAt: now(),
@@ -250,19 +254,12 @@ export const mockPrisma = {
     findFirst: async ({ where = {}, include } = {}) => includeBusiness(db.businesses.find((item) => matches(item, where)) || null, include),
     update: async ({ where, data, include }) => {
       const record = db.businesses.find((item) => matches(item, where));
-      Object.assign(record, {
-        name: data.name,
-        industryType: data.industryType,
-        serviceAreas: data.serviceAreas || [],
-        businessHours: data.businessHours || {},
-        twilioPhoneNumber: data.twilioPhoneNumber,
-        businessPhoneNumber: data.businessPhoneNumber,
-        ownerNotificationPhone: data.ownerNotificationPhone,
-        ownerNotificationEmail: data.ownerNotificationEmail,
-        updatedAt: now()
-      });
-      if (data.serviceTypes?.create) db.serviceTypes.push(...data.serviceTypes.create.map((item) => ({ id: id("service"), businessId: record.id, createdAt: now(), ...item })));
-      if (data.availability?.create) db.availability.push(...data.availability.create.map((item) => ({ id: id("avail"), businessId: record.id, createdAt: now(), ...item })));
+      // Assign scalar fields generically (supports callHandlingMode, ringSeconds, smsStatus, etc.);
+      // relation writes are handled separately below.
+      const { serviceTypes, availability, ...scalar } = data;
+      Object.assign(record, scalar, { updatedAt: now() });
+      if (serviceTypes?.create) db.serviceTypes.push(...serviceTypes.create.map((item) => ({ id: id("service"), businessId: record.id, createdAt: now(), ...item })));
+      if (availability?.create) db.availability.push(...availability.create.map((item) => ({ id: id("avail"), businessId: record.id, createdAt: now(), ...item })));
       return includeBusiness(record, include);
     }
   },

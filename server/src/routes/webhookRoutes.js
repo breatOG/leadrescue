@@ -260,6 +260,74 @@ router.get(
   })
 );
 
+// --- Ring-first call routing -------------------------------------------------
+// Caller CallSids whose owner accepted the screened call (pressed 1). Short TTL.
+const acceptedCalls = new Map(); // callSid -> expiresAt
+function markCallAccepted(sid) {
+  if (sid) acceptedCalls.set(sid, Date.now() + 60 * 60 * 1000);
+}
+function consumeCallAccepted(sid) {
+  const exp = acceptedCalls.get(sid);
+  if (exp) acceptedCalls.delete(sid);
+  return Boolean(exp && exp > Date.now());
+}
+setInterval(() => {
+  const now = Date.now();
+  for (const [sid, exp] of acceptedCalls) if (exp <= now) acceptedCalls.delete(sid);
+}, 5 * 60 * 1000).unref();
+
+// Renders the AI receptionist answer (realtime stream, or TTS fallback) to the caller.
+async function respondWithAi(req, res, { business, lead }) {
+  const updatedLead = await prisma.lead.update({
+    where: { id: lead.id },
+    data: { status: lead.status === "new" ? "texting" : lead.status, lastMessage: "AI voice call started" }
+  });
+
+  await prisma.message.create({
+    data: { leadId: updatedLead.id, direction: "inbound", channel: "voice", body: "[call started]" }
+  });
+
+  if (aiVoiceEnabled()) {
+    return res.type("text/xml").send(
+      createAiVoiceTwiML(req, {
+        businessName: business.name,
+        leadId: updatedLead.id,
+        businessId: business.id,
+        customerPhone: req.body.From
+      })
+    );
+  }
+
+  const [initMessages, slots] = await Promise.all([
+    prisma.message.findMany({ where: { leadId: updatedLead.id }, orderBy: { createdAt: "asc" } }),
+    getAvailableSlots(business.id)
+  ]);
+  const { text: greeting, extracted } = await runVoiceAiTurn({ business, lead: updatedLead, messages: initMessages, slots });
+  await prisma.message.create({
+    data: { leadId: updatedLead.id, direction: "outbound", channel: "voice", body: greeting }
+  });
+  await saveExtractedFields(updatedLead.id, extracted);
+
+  const [ttsId, timeoutTtsId] = await Promise.all([
+    generateTtsAudio(greeting).catch(() => null),
+    generateTtsAudio("Sorry, I didn't catch that. Please call us back and we will be happy to help.").catch(() => null)
+  ]);
+  const gatherUrl = `/webhooks/twilio/voice-gather?leadId=${updatedLead.id}&amp;businessId=${business.id}`;
+  const greetingXml = ttsId
+    ? `<Play>${esc(ttsPlayUrl(ttsId))}</Play>`
+    : `<Say voice="Google.en-US-Neural2-F">${esc(greeting)}</Say>`;
+  const timeoutXml = timeoutTtsId
+    ? `<Play>${esc(ttsPlayUrl(timeoutTtsId))}</Play>`
+    : `<Say voice="Google.en-US-Neural2-F">Sorry, I didn't catch that. Please call us back and we will be happy to help.</Say>`;
+  return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Gather input="speech" action="${gatherUrl}" method="POST" speechTimeout="auto" timeout="10" language="en-US" enhanced="true">
+    ${greetingXml}
+  </Gather>
+  ${timeoutXml}
+</Response>`);
+}
+
 router.post(
   "/twilio/voice",
   asyncHandler(async (req, res) => {
@@ -277,54 +345,95 @@ router.post(
 </Response>`);
     }
 
-    const updatedLead = await prisma.lead.update({
-      where: { id: lead.id },
-      data: { status: lead.status === "new" ? "texting" : lead.status, lastMessage: "AI voice call started" }
-    });
+    // Ring the owner's phone first; the AI takes over only on miss / decline / voicemail.
+    const mode = business.callHandlingMode || "ring_first";
+    const ownerPhone = (business.ownerNotificationPhone || business.businessPhoneNumber || "").trim();
 
-    await prisma.message.create({
-      data: { leadId: updatedLead.id, direction: "inbound", channel: "voice", body: "[call started]" }
-    });
-
-    if (aiVoiceEnabled()) {
-      return res.type("text/xml").send(
-        createAiVoiceTwiML(req, {
-          businessName: business.name,
-          leadId: updatedLead.id,
-          businessId: business.id,
-          customerPhone: req.body.From
-        })
-      );
+    if (mode === "ring_first" && ownerPhone) {
+      const ringSeconds = Number(business.ringSeconds) || 15;
+      const q = `leadId=${lead.id}&amp;businessId=${business.id}`;
+      await prisma.lead
+        .update({ where: { id: lead.id }, data: { lastMessage: "Incoming call — ringing the team" } })
+        .catch(() => {});
+      return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Google.en-US-Neural2-F">Thanks for calling ${esc(business.name)}. Connecting you now.</Say>
+  <Dial timeout="${ringSeconds}" answerOnBridge="true" action="/webhooks/twilio/after-dial?${q}" method="POST">
+    <Number url="/webhooks/twilio/screen?${q}" method="POST">${esc(ownerPhone)}</Number>
+  </Dial>
+</Response>`);
     }
 
-    const [initMessages, slots] = await Promise.all([
-      prisma.message.findMany({ where: { leadId: updatedLead.id }, orderBy: { createdAt: "asc" } }),
-      getAvailableSlots(business.id)
-    ]);
-    const { text: greeting, extracted } = await runVoiceAiTurn({ business, lead: updatedLead, messages: initMessages, slots });
-    await prisma.message.create({
-      data: { leadId: updatedLead.id, direction: "outbound", channel: "voice", body: greeting }
-    });
-    await saveExtractedFields(updatedLead.id, extracted);
+    // AI answers immediately (mode = ai_immediately, or no owner phone configured).
+    return respondWithAi(req, res, { business, lead });
+  })
+);
 
-    const [ttsId, timeoutTtsId] = await Promise.all([
-      generateTtsAudio(greeting).catch(() => null),
-      generateTtsAudio("Sorry, I didn't catch that. Please call us back and we will be happy to help.").catch(() => null)
-    ]);
-    const gatherUrl = `/webhooks/twilio/voice-gather?leadId=${updatedLead.id}&amp;businessId=${business.id}`;
-    const greetingXml = ttsId
-      ? `<Play>${esc(ttsPlayUrl(ttsId))}</Play>`
-      : `<Say voice="Google.en-US-Neural2-F">${esc(greeting)}</Say>`;
-    const timeoutXml = timeoutTtsId
-      ? `<Play>${esc(ttsPlayUrl(timeoutTtsId))}</Play>`
-      : `<Say voice="Google.en-US-Neural2-F">Sorry, I didn't catch that. Please call us back and we will be happy to help.</Say>`;
+// Whisper played to the owner when they answer — requires pressing 1 to take the call.
+// This also defeats the voicemail-answers-the-call problem: voicemail won't press 1.
+router.post(
+  "/twilio/screen",
+  asyncHandler(async (req, res) => {
+    const { leadId, businessId } = req.query;
+    const q = `leadId=${leadId}&amp;businessId=${businessId}`;
+    res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Gather numDigits="1" action="/webhooks/twilio/screen-accept?${q}" method="POST" timeout="6">
+    <Say voice="Google.en-US-Neural2-F">You have a new lead calling. Press 1 to take the call, or hang up to send them to your assistant.</Say>
+  </Gather>
+  <Hangup/>
+</Response>`);
+  })
+);
+
+// Owner pressed a key on the screen prompt. "1" accepts (bridges); anything else drops the owner leg.
+router.post(
+  "/twilio/screen-accept",
+  asyncHandler(async (req, res) => {
+    if (req.body.Digits === "1") {
+      markCallAccepted(req.body.ParentCallSid);
+      return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Google.en-US-Neural2-F">Connecting you now.</Say>
+</Response>`);
+    }
     return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Gather input="speech" action="${gatherUrl}" method="POST" speechTimeout="auto" timeout="10" language="en-US" enhanced="true">
-    ${greetingXml}
-  </Gather>
-  ${timeoutXml}
+  <Hangup/>
 </Response>`);
+  })
+);
+
+// Fires when the Dial to the owner ends. If the owner accepted (pressed 1), we're done;
+// otherwise (no answer, busy, declined, or voicemail) the AI receptionist takes over.
+router.post(
+  "/twilio/after-dial",
+  asyncHandler(async (req, res) => {
+    const { leadId, businessId } = req.query;
+    const accepted = consumeCallAccepted(req.body.CallSid);
+    console.log(`[voice] after-dial status=${req.body.DialCallStatus} accepted=${accepted} call=${req.body.CallSid}`);
+
+    if (accepted) {
+      await prisma.lead
+        .update({ where: { id: leadId }, data: { status: "qualified", lastMessage: "Call answered by the team" } })
+        .catch(() => {});
+      return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`);
+    }
+
+    const [business, lead] = await Promise.all([
+      prisma.business.findUnique({ where: { id: businessId }, include: { serviceTypes: true } }),
+      prisma.lead.findUnique({ where: { id: leadId } })
+    ]);
+
+    if (!business || !lead) {
+      return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Google.en-US-Neural2-F">Sorry, something went wrong on our end. Please call back.</Say>
+  <Hangup/>
+</Response>`);
+    }
+
+    return respondWithAi(req, res, { business, lead });
   })
 );
 

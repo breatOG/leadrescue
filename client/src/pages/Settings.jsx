@@ -754,6 +754,8 @@ export default function Settings() {
         businessPhoneNumber: form.businessPhoneNumber,
         ownerNotificationPhone: form.ownerNotificationPhone,
         ownerNotificationEmail: form.ownerNotificationEmail,
+        callHandlingMode: form.callHandlingMode || "ring_first",
+        ringSeconds: Number(form.ringSeconds) || 15,
         serviceAreas: form.serviceAreasText.split(",").map((item) => item.trim()).filter(Boolean),
         serviceTypes: form.serviceTypesText.split(",").map((item) => item.trim()).filter(Boolean),
         businessHours: form.businessHours,
@@ -820,6 +822,43 @@ export default function Settings() {
         </div>
 
         <div style={{ height: 1, background: "var(--line)", margin: "8px 0" }} />
+
+        {/* Call handling */}
+        <div style={{ marginBottom: 8 }}>
+          <h2 style={{ margin: "0 0 4px", fontSize: "1rem" }}>Call handling</h2>
+          <p style={{ margin: 0, fontSize: "0.8rem", color: "#94a3b8" }}>What happens when a customer calls your number.</p>
+        </div>
+        <div className="form-grid">
+          <label>
+            When a call comes in
+            <select
+              value={form.callHandlingMode || "ring_first"}
+              onChange={(e) => setField("callHandlingMode", e.target.value)}
+              style={{ width: "100%", padding: "11px 12px", border: "1px solid var(--line)", borderRadius: 8, background: "#fff", fontSize: "0.95rem", color: "var(--ink)" }}
+            >
+              <option value="ring_first">Ring me first, then AI if I miss it</option>
+              <option value="ai_immediately">AI answers immediately</option>
+            </select>
+          </label>
+          <label>
+            Ring my phone for
+            <select
+              value={form.ringSeconds || 15}
+              onChange={(e) => setField("ringSeconds", Number(e.target.value))}
+              style={{ width: "100%", padding: "11px 12px", border: "1px solid var(--line)", borderRadius: 8, background: "#fff", fontSize: "0.95rem", color: "var(--ink)" }}
+            >
+              <option value={10}>Short — 10 seconds</option>
+              <option value={15}>Standard — 15 seconds</option>
+              <option value={25}>Long — 25 seconds</option>
+            </select>
+          </label>
+        </div>
+        <p style={{ margin: "8px 0 0", fontSize: "0.78rem", color: "#94a3b8", lineHeight: 1.5 }}>
+          With <strong>"ring me first,"</strong> we call your alert phone{form.ownerNotificationPhone ? ` (${form.ownerNotificationPhone})` : ""} and ask you to press <strong>1</strong> to take the call. If you don't answer, decline, or it goes to voicemail, the AI receptionist picks up automatically.
+          {!form.ownerNotificationPhone && <span style={{ color: "#b45309" }}> Add an alert phone above so we know where to ring you.</span>}
+        </p>
+
+        <div style={{ height: 1, background: "var(--line)", margin: "12px 0 8px" }} />
 
         {/* Availability */}
         <div style={{ marginBottom: 16 }}>

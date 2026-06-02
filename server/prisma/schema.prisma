@@ -103,6 +103,8 @@ model Business {
   ownerNotificationEmail String?
   serviceAreas           String[]               @default([])
   businessHours          Json?
+  callHandlingMode       String                 @default("ring_first")
+  ringSeconds            Int                    @default(15)
   smsStatus              String                 @default("not_started")
   twilioMsgServiceSid    String?
   twilioBrandSid         String?

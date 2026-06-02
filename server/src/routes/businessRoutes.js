@@ -55,6 +55,8 @@ router.put(
       businessPhoneNumber,
       ownerNotificationPhone,
       ownerNotificationEmail,
+      callHandlingMode,
+      ringSeconds,
       availability
     } = req.body;
 
@@ -72,6 +74,8 @@ router.put(
         businessPhoneNumber,
         ownerNotificationPhone,
         ownerNotificationEmail,
+        ...(callHandlingMode !== undefined ? { callHandlingMode } : {}),
+        ...(ringSeconds !== undefined ? { ringSeconds: Number(ringSeconds) || 15 } : {}),
         serviceTypes: {
           create: (serviceTypes || []).filter(Boolean).map((type) => ({ name: type }))
         },
