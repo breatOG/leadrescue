@@ -1,8 +1,115 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, ArrowRight, CalendarCheck, MessageCircle, PhoneMissed, TrendingUp, Zap } from "lucide-react";
+import { AlertTriangle, ArrowRight, CalendarCheck, MessageCircle, Phone, PhoneMissed, TrendingUp, Zap } from "lucide-react";
 import { api, getCache, setCache } from "../api/client.js";
 import { Badge } from "../components/Layout.jsx";
+
+function fmt(e164) {
+  const d = (e164 || "").replace(/\D/g, "");
+  if (d.length === 11 && d[0] === "1") return `(${d.slice(1,4)}) ${d.slice(4,7)}-${d.slice(7)}`;
+  if (d.length === 10) return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
+  return e164;
+}
+
+function PhoneSetupCard({ usage, onAssigned }) {
+  const isPremium = ["pro", "scale"].includes(usage?.plan || "");
+  const [zip, setZip] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [results, setResults] = useState(null);
+  const [selecting, setSelecting] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  async function searchZip(e) {
+    e.preventDefault(); setMsg(""); setResults(null);
+    if (!/^\d{5}$/.test(zip)) { setMsg("Enter a 5-digit ZIP code."); return; }
+    setSearching(true);
+    try {
+      const data = await api(`/api/business/numbers-by-zip?zip=${zip}`);
+      setResults(data.numbers || []);
+      if (!data.numbers?.length) setMsg(data.hint || "No numbers near that ZIP — try a nearby one.");
+    } catch (err) { setMsg(err.message); }
+    finally { setSearching(false); }
+  }
+
+  async function selectNumber(phoneNumber) {
+    setSelecting(phoneNumber); setMsg("");
+    try {
+      await api("/api/business/select-number", { method: "POST", body: { phoneNumber } });
+      onAssigned(phoneNumber);
+    } catch (err) { setMsg(err.message); }
+    finally { setSelecting(null); }
+  }
+
+  async function checkNow() {
+    setRefreshing(true);
+    try {
+      const u = await api("/api/payments/usage");
+      if (u.twilioPhoneNumber) onAssigned(u.twilioPhoneNumber);
+      else setMsg("Not assigned yet — try again in a moment.");
+    } catch {}
+    finally { setRefreshing(false); }
+  }
+
+  return (
+    <div style={{ background: "#fff", border: "1.5px solid #bfdbfe", borderRadius: 14, padding: "22px 24px", marginBottom: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 12 }}>
+        <div style={{ width: 36, height: 36, borderRadius: 10, background: "#eff6ff", border: "1px solid #bfdbfe", display: "flex", alignItems: "center", justifyContent: "center", color: "#2563eb" }}>
+          <Phone size={17} />
+        </div>
+        <div>
+          <div style={{ fontWeight: 800, fontSize: "0.95rem", color: "#0f172a" }}>Set up your phone number</div>
+          <div style={{ fontSize: "0.77rem", color: "#64748b" }}>This is the number customers call and text</div>
+        </div>
+      </div>
+
+      {isPremium ? (
+        <>
+          <p style={{ margin: "0 0 12px", fontSize: "0.85rem", color: "#374151" }}>
+            Enter a ZIP code near your business to see available local numbers.
+          </p>
+          <form onSubmit={searchZip} style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+            <input
+              value={zip}
+              onChange={(e) => setZip(e.target.value.replace(/\D/g, "").slice(0, 5))}
+              placeholder="ZIP code (e.g. 46201)"
+              maxLength={5}
+              style={{ width: 190, padding: "0.5rem 0.75rem", border: "1px solid #d1d5db", borderRadius: 8, fontSize: "0.9rem" }}
+            />
+            <button className="button" type="submit" disabled={searching}>
+              {searching ? "Searching…" : "Search numbers"}
+            </button>
+          </form>
+          {results && results.length > 0 && (
+            <div style={{ border: "1px solid #e5e7eb", borderRadius: 10, overflow: "hidden", marginBottom: 8 }}>
+              {results.map((n) => (
+                <div key={n.phoneNumber} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 14px", borderBottom: "1px solid #f8fafc" }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: "0.95rem" }}>{fmt(n.phoneNumber)}</div>
+                    {n.locality && <div style={{ fontSize: "0.75rem", color: "#9ca3af" }}>{n.locality}, {n.region}</div>}
+                  </div>
+                  <button className="button" onClick={() => selectNumber(n.phoneNumber)} disabled={!!selecting} style={{ fontSize: "0.8rem", padding: "0.35rem 0.9rem" }}>
+                    {selecting === n.phoneNumber ? "Selecting…" : "Choose"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <p style={{ margin: "0 0 12px", fontSize: "0.85rem", color: "#374151" }}>
+            We're assigning you a local phone number automatically. It usually takes less than a minute.
+          </p>
+          <button className="ghost" onClick={checkNow} disabled={refreshing} style={{ fontSize: "0.83rem" }}>
+            {refreshing ? "Checking…" : "Check now"}
+          </button>
+        </>
+      )}
+      {msg && <p style={{ margin: "10px 0 0", fontSize: "0.82rem", color: msg.startsWith("Not assigned") ? "#b45309" : "#ef4444", fontWeight: 600 }}>{msg}</p>}
+    </div>
+  );
+}
 
 // ── Stat card ────────────────────────────────────────────────────────────────
 function StatCard({ label, value, icon, color }) {
@@ -146,6 +253,14 @@ export default function Dashboard() {
 
       {/* Usage strip */}
       <UsagePanel usage={usage} />
+
+      {/* Phone setup — shown until a number is assigned */}
+      {usage && !usage.twilioPhoneNumber && (
+        <PhoneSetupCard
+          usage={usage}
+          onAssigned={(num) => setUsage((prev) => ({ ...prev, twilioPhoneNumber: num }))}
+        />
+      )}
 
       {/* Recent conversations */}
       <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 14, overflow: "hidden" }}>

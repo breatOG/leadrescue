@@ -234,7 +234,8 @@ router.get(
       leadsLimit: limits.leadsPerMonth,
       voice: limits.voice,
       locations: limits.locations,
-      numberType: ["pro","scale"].includes(plan) ? "choose" : "auto"
+      numberType: ["pro","scale"].includes(plan) ? "choose" : "auto",
+      twilioPhoneNumber: req.business.twilioPhoneNumber || null
     });
   })
 );
