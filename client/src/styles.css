@@ -330,7 +330,7 @@ button.button {
   height: 44px;
   border-radius: 11px;
   flex-shrink: 0;
-  background: url('/logo.png') center / 185% no-repeat;
+  background: url('/logo.svg') center / cover no-repeat;
   box-shadow: 0 3px 12px rgba(13, 122, 108, 0.35);
   transition: box-shadow 0.2s;
 }

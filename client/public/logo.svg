@@ -1,11 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
-  <rect width="200" height="200" rx="44" fill="#0f766e"/>
-  <!-- L -->
-  <polygon fill="white" points="22,28 50,28 50,148 94,148 94,172 22,172"/>
-  <!-- R bowl (outer D with inner cutout via evenodd) -->
-  <path fill="white" fill-rule="evenodd" d="M130,28 C178,28 188,48 188,72 C188,96 178,116 130,116 Z M130,52 C158,52 162,62 162,72 C162,82 158,92 130,92 Z"/>
-  <!-- R stem (drawn after bowl so it overrides bowl boundary) -->
-  <rect x="104" y="28" width="26" height="144" fill="white"/>
-  <!-- R leg with bottom-right notch -->
-  <polygon fill="white" points="130,116 154,116 178,162 164,172 152,172 130,172"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <rect width="100" height="100" fill="#0f766e"/>
+  <text x="50" y="50" text-anchor="middle" dominant-baseline="central"
+    font-family="'Arial Black','Helvetica Neue',Arial,sans-serif"
+    font-size="46" font-weight="900" fill="white" letter-spacing="-1">LR</text>
 </svg>
