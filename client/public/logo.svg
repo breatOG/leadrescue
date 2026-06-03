@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0e8070"/>
+      <stop offset="100%" stop-color="#065048"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background rounded square -->
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+
+  <!-- LR drop shadow -->
+  <text x="259" y="357"
+    text-anchor="middle"
+    font-family="'Arial Black', 'Impact', Arial, sans-serif"
+    font-size="270"
+    font-weight="900"
+    fill="rgba(0,0,0,0.3)"
+    letter-spacing="-20">LR</text>
+
+  <!-- LR white letters -->
+  <text x="254" y="351"
+    text-anchor="middle"
+    font-family="'Arial Black', 'Impact', Arial, sans-serif"
+    font-size="270"
+    font-weight="900"
+    fill="white"
+    letter-spacing="-20">LR</text>
+
+  <!-- Speech bubble — sits upper-right, tail points toward the R -->
+  <path d="
+    M 338 32
+    Q 318 32 318 52
+    L 318 190
+    Q 318 210 338 210
+    L 347 210
+    L 338 237
+    L 364 210
+    L 476 210
+    Q 496 210 496 190
+    L 496 52
+    Q 496 32 476 32
+    Z
+  " fill="none" stroke="#7de8d5" stroke-width="17" stroke-linejoin="round"/>
+
+  <!-- Three dots inside bubble -->
+  <circle cx="357" cy="124" r="14" fill="#7de8d5"/>
+  <circle cx="407" cy="124" r="14" fill="#7de8d5"/>
+  <circle cx="457" cy="124" r="14" fill="#7de8d5"/>
+
+  <!-- Swoosh arc below LR -->
+  <path d="M 44 420 Q 256 482 466 392"
+    fill="none"
+    stroke="#7de8d5"
+    stroke-width="17"
+    stroke-linecap="round"/>
+</svg>
