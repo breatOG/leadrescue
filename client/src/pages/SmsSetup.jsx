@@ -84,18 +84,21 @@ const textareaStyle = { ...inputStyle, minHeight: 80, resize: "vertical" };
 
 function StatusScreen({ status, steps, onRetry, onDone }) {
   const icons = {
+    platform: <ShieldCheck size={40} style={{ color: "#16a34a" }} />,
     pending: <Clock size={40} style={{ color: "#f59e0b" }} />,
     approved: <ShieldCheck size={40} style={{ color: "#16a34a" }} />,
     failed: <XCircle size={40} style={{ color: "#ef4444" }} />
   };
 
   const titles = {
+    platform: "You're covered by the LeadRescue platform",
     pending: "Submitted for verification",
     approved: "SMS verified!",
     failed: "Submission issue"
   };
 
   const descriptions = {
+    platform: "LeadRescue's platform SMS campaign is already registered and active. Your messages are fully compliant with US carriers — no additional setup required on your end.",
     pending: "Your A2P 10DLC registration has been submitted to Twilio and the carrier network. Approval typically takes 1–3 business days. You'll be able to send SMS normally once approved. Check back here for updates.",
     approved: "Your SMS registration is approved. Your Twilio number can now send and receive messages to customers without carrier filtering.",
     failed: "Something went wrong during submission. Review the details below and try again, or contact Twilio support."
@@ -151,16 +154,20 @@ export default function SmsSetup() {
   });
 
   // Pre-fill from saved form data (or from business profile prefill if first time)
+  // Also redirect to settings if the platform campaign already covers this account.
   useEffect(() => {
     api("/api/sms-registration").then((data) => {
+      if (data.platformConfigured) {
+        // Platform-level campaign covers all clients — no per-client wizard needed
+        setResult({ status: "platform", steps: [] });
+        return;
+      }
       if (data.smsStatus === "pending" || data.smsStatus === "approved" || data.smsStatus === "failed") {
         setResult({ status: data.smsStatus, steps: [] });
       }
       if (data.smsFormData) {
-        // Previously saved — restore exactly
         setForm((f) => ({ ...f, ...data.smsFormData }));
       } else if (data.prefill) {
-        // First time — pre-populate from their business profile
         setForm((f) => ({ ...f, ...data.prefill }));
       }
     }).catch(() => {});
