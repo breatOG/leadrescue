@@ -177,7 +177,7 @@ async function handleAppointmentChoice({ business, lead, body }) {
   });
 
   await prisma.message.create({
-    data: { leadId: lead.id, direction: "outbound", channel: "sms", body: responseBody, twilioSid: result.sid }
+    data: { leadId: lead.id, direction: "outbound", channel: "sms", body: responseBody, twilioSid: result?.sid }
   });
   await prisma.lead.update({
     where: { id: lead.id },
@@ -228,8 +228,7 @@ router.post(
             await prisma.lead.update({ where: { id: pending.leadId }, data: { handoffMode: "ai" } });
             // Trigger AI response now
             const messages = await prisma.message.findMany({ where: { leadId: pending.leadId }, orderBy: { createdAt: "asc" } });
-            const slots = await getAvailableSlots(business.id);
-            const aiResult = await runAiLeadAgent({ business, lead: pendingLead, messages, slots }).catch(() => null);
+            const aiResult = await runAiLeadAgent({ business, lead: pendingLead, messages }).catch(() => null);
             if (aiResult?.nextMessageToCustomer) {
               const sent = await sendSms({ to: pending.customerPhone, from: business.twilioPhoneNumber || process.env.TWILIO_PHONE_NUMBER, body: aiResult.nextMessageToCustomer });
               await prisma.message.create({ data: { leadId: pending.leadId, direction: "outbound", channel: "sms", body: aiResult.nextMessageToCustomer, twilioSid: sent?.sid } });
@@ -320,9 +319,9 @@ router.post(
     }
 
     try {
-      const result = await sendSms({ to: lead.customerPhone, from: fromPhone, body: replyBody });
+      const result = await sendSms({ to: lead.customerPhone, from: twilioFrom, body: replyBody });
       await prisma.message.create({
-        data: { leadId: lead.id, direction: "outbound", channel: "sms", body: replyBody, twilioSid: result.sid }
+        data: { leadId: lead.id, direction: "outbound", channel: "sms", body: replyBody, twilioSid: result?.sid }
       });
       await prisma.lead.update({ where: { id: lead.id }, data: { lastMessage: replyBody } });
     } catch (err) {
@@ -752,8 +751,7 @@ router.post(
 
       // Transcribe with OpenAI Whisper
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-      const { File } = await import("node:buffer");
-      const audioFile = new globalThis.File([audioBuffer], "call.mp3", { type: "audio/mpeg" });
+      const audioFile = new File([audioBuffer], "call.mp3", { type: "audio/mpeg" });
       const transcription = await openai.audio.transcriptions.create({ file: audioFile, model: "whisper-1" });
       const transcript = transcription.text;
 
