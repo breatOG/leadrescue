@@ -80,6 +80,7 @@ RESPOND IN THIS JSON FORMAT ONLY:
 {
   "message": "What you actually say out loud — warm, natural, 1-3 short sentences max",
   "done": false,
+  "bookedSlotIndex": null,
   "extracted": {
     "customerName": null,
     "jobType": null,
@@ -92,6 +93,7 @@ RESPOND IN THIS JSON FORMAT ONLY:
 }
 
 Set done=true ONLY on your final goodbye turn.
+Set bookedSlotIndex to the 0-based index from the open slots list when the caller confirms a specific appointment slot. Leave it null until they confirm.
 Only fill in extracted fields for things the caller clearly stated. If they corrected something, use the corrected value.`;
 
   if (!process.env.OPENAI_API_KEY) {
@@ -115,6 +117,7 @@ Only fill in extracted fields for things the caller clearly stated. If they corr
   return {
     text: String(result.message || "").trim(),
     done: result.done === true,
+    bookedSlotIndex: typeof result.bookedSlotIndex === "number" ? result.bookedSlotIndex : null,
     extracted: result.extracted || {}
   };
 }

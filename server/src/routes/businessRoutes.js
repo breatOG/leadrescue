@@ -138,8 +138,14 @@ router.post(
   "/provision-phone",
   requireAuth,
   asyncHandler(async (req, res) => {
-    const { phoneNumber } = req.body;
+    const { phoneNumber, replace } = req.body;
     if (!phoneNumber) return res.status(400).json({ error: "phoneNumber is required." });
+    if (req.business.twilioPhoneNumber && !replace) {
+      return res.status(400).json({
+        error: `This account already has a number (${req.business.twilioPhoneNumber}). Each account is limited to one number. Pass replace:true to swap it.`,
+        existingNumber: req.business.twilioPhoneNumber
+      });
+    }
 
     const baseUrl = (process.env.APP_BASE_URL || "").replace(/\/$/, "");
     if (!baseUrl) {
@@ -174,8 +180,14 @@ router.post(
   "/connect-existing-number",
   requireAuth,
   asyncHandler(async (req, res) => {
-    const { phoneNumber } = req.body;
+    const { phoneNumber, replace } = req.body;
     if (!phoneNumber) return res.status(400).json({ error: "phoneNumber is required." });
+    if (req.business.twilioPhoneNumber && !replace) {
+      return res.status(400).json({
+        error: `This account already has a number (${req.business.twilioPhoneNumber}). Each account is limited to one number. Pass replace:true to swap it.`,
+        existingNumber: req.business.twilioPhoneNumber
+      });
+    }
 
     const baseUrl = (process.env.APP_BASE_URL || "").replace(/\/$/, "");
     if (!baseUrl) return res.status(503).json({ error: "APP_BASE_URL is not set on the server." });

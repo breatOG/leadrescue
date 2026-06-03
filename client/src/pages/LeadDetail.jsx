@@ -25,6 +25,10 @@ export default function LeadDetail() {
   const [manualMessage, setManualMessage] = useState("");
   const [notes, setNotes] = useState("");
   const [drafting, setDrafting] = useState(false);
+  const [slots, setSlots] = useState([]);
+  const [showBooking, setShowBooking] = useState(false);
+  const [bookingSlot, setBookingSlot] = useState("");
+  const [booking, setBooking] = useState(false);
 
   async function loadLead() {
     const data = await api(`/api/leads/${id}`);
@@ -75,6 +79,32 @@ export default function LeadDetail() {
       /* ignore */
     } finally {
       setDrafting(false);
+    }
+  }
+
+  async function openBooking() {
+    setShowBooking(true);
+    if (!slots.length) {
+      try {
+        const { slots: s } = await api("/api/availability");
+        setSlots(s);
+        if (s.length) setBookingSlot(s[0].startAt);
+      } catch { /* ignore */ }
+    }
+  }
+
+  async function bookManually(e) {
+    e.preventDefault();
+    if (!bookingSlot) return;
+    setBooking(true);
+    try {
+      await api("/api/appointments/book", { method: "POST", body: { leadId: id, startAt: bookingSlot, notes: "Manually booked by team." } });
+      setShowBooking(false);
+      await loadLead();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setBooking(false);
     }
   }
 
@@ -130,7 +160,40 @@ export default function LeadDetail() {
         <h2>AI summary</h2>
         <p className="summary">{lead.aiSummary || "The AI is still qualifying this lead."}</p>
 
-        <h2>Appointments</h2>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 16 }}>
+          <h2 style={{ margin: 0 }}>Appointments</h2>
+          {lead.status !== "closed" && (
+            <button className="ghost small" onClick={openBooking} style={{ fontSize: "0.78rem" }}>
+              + Book appointment
+            </button>
+          )}
+        </div>
+
+        {showBooking && (
+          <form onSubmit={bookManually} style={{ margin: "10px 0", padding: "12px 14px", background: "#f8fafc", border: "1px solid var(--line)", borderRadius: 10, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ fontWeight: 700, fontSize: "0.85rem" }}>Book an appointment</div>
+            {slots.length === 0 ? (
+              <p style={{ fontSize: "0.83rem", color: "#94a3b8", margin: 0 }}>No available slots — add availability in Settings first.</p>
+            ) : (
+              <select value={bookingSlot} onChange={(e) => setBookingSlot(e.target.value)} style={{ padding: "7px 10px", border: "1px solid var(--line)", borderRadius: 8, fontSize: "0.88rem" }}>
+                {slots.map((s) => (
+                  <option key={s.startAt} value={s.startAt}>
+                    {new Date(s.startAt).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                  </option>
+                ))}
+              </select>
+            )}
+            <div style={{ display: "flex", gap: 8 }}>
+              {slots.length > 0 && (
+                <button className="button" type="submit" disabled={booking} style={{ fontSize: "0.83rem" }}>
+                  {booking ? "Booking…" : "Confirm booking"}
+                </button>
+              )}
+              <button type="button" className="ghost" onClick={() => setShowBooking(false)} style={{ fontSize: "0.83rem" }}>Cancel</button>
+            </div>
+          </form>
+        )}
+
         {lead.appointments.length ? (
           lead.appointments.map((apt) => (
             <div key={apt.id} className="detail-field">
@@ -140,7 +203,7 @@ export default function LeadDetail() {
             </div>
           ))
         ) : (
-          <p>No appointment booked yet.</p>
+          <p style={{ color: "#94a3b8", fontSize: "0.85rem" }}>No appointment booked yet.</p>
         )}
 
         <h2>Notes</h2>

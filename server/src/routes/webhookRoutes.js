@@ -519,13 +519,14 @@ router.post(
       });
     }
 
-    let aiReply, done, extracted;
+    let aiReply, done, extracted, bookedSlotIndex, voiceSlots;
     try {
       const [messages, slots] = await Promise.all([
         prisma.message.findMany({ where: { leadId: lead.id }, orderBy: { createdAt: "asc" } }),
         getAvailableSlots(business.id)
       ]);
-      ({ text: aiReply, done, extracted } = await runVoiceAiTurn({ business, lead, messages, slots }));
+      voiceSlots = slots;
+      ({ text: aiReply, done, extracted, bookedSlotIndex } = await runVoiceAiTurn({ business, lead, messages, slots }));
     } catch (err) {
       console.error("[voice-gather] AI error:", err.message);
       const retryMsg = "Sorry, I didn't quite catch that — could you say that again?";
@@ -548,6 +549,21 @@ router.post(
     await saveExtractedFields(lead.id, extracted);
     await prisma.lead.update({ where: { id: lead.id }, data: { lastMessage: aiReply } });
 
+    // Book the appointment the AI confirmed during the call
+    if (bookedSlotIndex != null && voiceSlots?.[bookedSlotIndex]) {
+      try {
+        await bookAppointment({
+          businessId: business.id,
+          leadId: lead.id,
+          startAt: voiceSlots[bookedSlotIndex].startAt,
+          notes: "Booked during AI voice call."
+        });
+        console.log(`[voice] Appointment booked at slot ${bookedSlotIndex} for lead ${lead.id}`);
+      } catch (e) {
+        console.error("[voice] Appointment booking failed:", e.message);
+      }
+    }
+
     if (done) {
       try {
         const [finalMessages, finalLead] = await Promise.all([
@@ -555,11 +571,12 @@ router.post(
           prisma.lead.findUnique({ where: { id: lead.id } })
         ]);
         const summary = await runAiLeadAgent({ business, lead: finalLead, messages: finalMessages });
+        const finalStatus = finalLead.status === "appointment_booked" ? "appointment_booked" : "qualified";
         await prisma.lead.update({
           where: { id: lead.id },
-          data: { status: "qualified", priority: summary.leadPriority, aiSummary: summary.contractorSummary, ...summary.extractedFields }
+          data: { status: finalStatus, priority: summary.leadPriority, aiSummary: summary.contractorSummary, ...summary.extractedFields }
         });
-        notifyContractor({ business, lead: { ...finalLead, status: "qualified" }, summary: summary.contractorSummary })
+        notifyContractor({ business, lead: { ...finalLead, status: finalStatus }, summary: summary.contractorSummary })
           .catch((e) => console.error("Notify failed:", e.message));
       } catch (err) {
         console.error("[voice-gather] Summary error:", err.message);

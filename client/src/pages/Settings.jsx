@@ -192,6 +192,7 @@ function TwilioPhonePanel({ currentNumber, onProvisioned }) {
   const [results, setResults] = useState(null);
   const [provisioning, setProvisioning] = useState(null);
   const [reconfiguring, setReconfiguring] = useState(false);
+  const [replacing, setReplacing] = useState(false);
   const [success, setSuccess] = useState("");
   const [error, setError] = useState("");
 
@@ -203,9 +204,9 @@ function TwilioPhonePanel({ currentNumber, onProvisioned }) {
     if (!existingInput.trim()) { setError("Enter your Twilio phone number."); return; }
     setConnecting(true);
     try {
-      const data = await api("/api/business/connect-existing-number", { method: "POST", body: { phoneNumber: existingInput.trim() } });
+      const data = await api("/api/business/connect-existing-number", { method: "POST", body: { phoneNumber: existingInput.trim(), replace: true } });
       onProvisioned(data.phoneNumber);
-      setExistingInput("");
+      setExistingInput(""); setReplacing(false);
       setSuccess(`${data.phoneNumber} is connected. SMS and voice are now routed to your AI.`);
     } catch (err) { setError(err.message); }
     finally { setConnecting(false); }
@@ -228,9 +229,9 @@ function TwilioPhonePanel({ currentNumber, onProvisioned }) {
     clearMessages();
     setProvisioning(phoneNumber);
     try {
-      const data = await api("/api/business/provision-phone", { method: "POST", body: { phoneNumber } });
+      const data = await api("/api/business/provision-phone", { method: "POST", body: { phoneNumber, replace: true } });
       onProvisioned(data.phoneNumber);
-      setResults(null); setAreaCode("");
+      setResults(null); setAreaCode(""); setReplacing(false);
       setSuccess(`${data.phoneNumber} is your LeadRescue number. Webhooks configured automatically.`);
     } catch (err) { setError(err.message); }
     finally { setProvisioning(null); }
@@ -259,82 +260,97 @@ function TwilioPhonePanel({ currentNumber, onProvisioned }) {
 
       {/* Current number display */}
       {currentNumber && (
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, padding: "0.75rem 1rem", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 9 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: replacing ? 14 : 0, padding: "0.75rem 1rem", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 9 }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 700, fontSize: "1rem" }}>{currentNumber}</div>
             <div style={{ fontSize: "0.78rem", color: "#16a34a", marginTop: 2 }}>Active · calls and texts route to your AI</div>
           </div>
-          <button className="ghost small" onClick={reconfigure} disabled={reconfiguring} style={{ fontSize: "0.78rem", display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
-            <RefreshCw size={12} /> {reconfiguring ? "Syncing…" : "Re-sync webhooks"}
-          </button>
-        </div>
-      )}
-
-      {/* Tabs */}
-      <div style={{ display: "flex", gap: 4, background: "#f3f4f6", borderRadius: 9, padding: 4, marginBottom: 16 }}>
-        <button style={tabStyle(tab === "existing")} onClick={() => { setTab("existing"); clearMessages(); setResults(null); }}>
-          Use my existing number
-        </button>
-        <button style={tabStyle(tab === "new")} onClick={() => { setTab("new"); clearMessages(); setResults(null); }}>
-          Get a new number
-        </button>
-      </div>
-
-      {tab === "existing" && (
-        <div>
-          <p style={{ fontSize: "0.84rem", color: "#374151", marginTop: 0, marginBottom: 12 }}>
-            Already have a number in your Twilio account? Enter it below and we'll connect it instantly — no purchase needed.
-          </p>
-          <form onSubmit={connectExisting} style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-            <input
-              value={existingInput}
-              onChange={(e) => setExistingInput(e.target.value)}
-              placeholder="+13175550100"
-              style={{ flex: 1, padding: "0.5rem 0.75rem", border: "1px solid #d1d5db", borderRadius: 8, fontSize: "0.9rem" }}
-            />
-            <button className="button" type="submit" disabled={connecting} style={{ whiteSpace: "nowrap" }}>
-              {connecting ? "Connecting…" : "Connect number"}
+          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+            <button className="ghost small" onClick={reconfigure} disabled={reconfiguring} style={{ fontSize: "0.78rem", display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
+              <RefreshCw size={12} /> {reconfiguring ? "Syncing…" : "Re-sync"}
             </button>
-          </form>
-          <div style={{ padding: "0.75rem 1rem", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, fontSize: "0.8rem", color: "#1e40af" }}>
-            <strong>Using your current business number?</strong> You can keep your existing phone number by porting it into Twilio (takes 2–7 days via Twilio support), or set up <strong>call forwarding</strong> from your current number to a LeadRescue number so missed calls still reach the AI.
+            <button className="ghost small" onClick={() => { setReplacing((r) => !r); clearMessages(); setResults(null); }} style={{ fontSize: "0.78rem", whiteSpace: "nowrap" }}>
+              {replacing ? "Cancel" : "Replace"}
+            </button>
           </div>
         </div>
       )}
 
-      {tab === "new" && (
-        <div>
-          <p style={{ fontSize: "0.84rem", color: "#374151", marginTop: 0, marginBottom: 12 }}>
-            Search for an available US number by area code. It will be purchased and configured automatically.
-          </p>
-          <form onSubmit={search} style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-            <input
-              value={areaCode}
-              onChange={(e) => setAreaCode(e.target.value.replace(/\D/g, "").slice(0, 3))}
-              placeholder="Area code (e.g. 317)"
-              style={{ width: 170, padding: "0.5rem 0.75rem", border: "1px solid #d1d5db", borderRadius: 8, fontSize: "0.9rem" }}
-            />
-            <button className="button" type="submit" disabled={searching} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <Search size={14} /> {searching ? "Searching…" : "Search"}
-            </button>
-          </form>
-
-          {results && results.length > 0 && (
-            <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, overflow: "hidden", marginBottom: 10 }}>
-              {results.map((n) => (
-                <div key={n.phoneNumber} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: "1px solid #f3f4f6" }}>
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: "0.88rem" }}>{n.friendlyName || n.phoneNumber}</div>
-                    {n.locality && <div style={{ fontSize: "0.76rem", color: "#9ca3af" }}>{n.locality}, {n.region}</div>}
-                  </div>
-                  <button className="button" onClick={() => provision(n.phoneNumber)} disabled={!!provisioning} style={{ fontSize: "0.8rem", padding: "0.35rem 0.85rem" }}>
-                    {provisioning === n.phoneNumber ? "Getting…" : "Get this number"}
-                  </button>
-                </div>
-              ))}
+      {/* Only show add-number UI when no number exists, or when explicitly replacing */}
+      {(!currentNumber || replacing) && (
+        <>
+          {replacing && (
+            <div style={{ padding: "0.65rem 1rem", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 8, fontSize: "0.8rem", color: "#92400e", marginBottom: 12 }}>
+              Replacing your number will disconnect {currentNumber}. The new number takes over immediately.
             </div>
           )}
-        </div>
+          {/* Tabs */}
+          <div style={{ display: "flex", gap: 4, background: "#f3f4f6", borderRadius: 9, padding: 4, marginBottom: 16, marginTop: currentNumber ? 0 : 0 }}>
+            <button style={tabStyle(tab === "existing")} onClick={() => { setTab("existing"); clearMessages(); setResults(null); }}>
+              Use my existing number
+            </button>
+            <button style={tabStyle(tab === "new")} onClick={() => { setTab("new"); clearMessages(); setResults(null); }}>
+              Get a new number
+            </button>
+          </div>
+
+          {tab === "existing" && (
+            <div>
+              <p style={{ fontSize: "0.84rem", color: "#374151", marginTop: 0, marginBottom: 12 }}>
+                Already have a number in your Twilio account? Enter it below and we'll connect it instantly — no purchase needed.
+              </p>
+              <form onSubmit={connectExisting} style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                <input
+                  value={existingInput}
+                  onChange={(e) => setExistingInput(e.target.value)}
+                  placeholder="+13175550100"
+                  style={{ flex: 1, padding: "0.5rem 0.75rem", border: "1px solid #d1d5db", borderRadius: 8, fontSize: "0.9rem" }}
+                />
+                <button className="button" type="submit" disabled={connecting} style={{ whiteSpace: "nowrap" }}>
+                  {connecting ? "Connecting…" : "Connect number"}
+                </button>
+              </form>
+              <div style={{ padding: "0.75rem 1rem", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, fontSize: "0.8rem", color: "#1e40af" }}>
+                <strong>Using your current business number?</strong> You can keep your existing phone number by porting it into Twilio (takes 2–7 days via Twilio support), or set up <strong>call forwarding</strong> from your current number to a LeadRescue number so missed calls still reach the AI.
+              </div>
+            </div>
+          )}
+
+          {tab === "new" && (
+            <div>
+              <p style={{ fontSize: "0.84rem", color: "#374151", marginTop: 0, marginBottom: 12 }}>
+                Search for an available US number by area code. It will be purchased and configured automatically.
+              </p>
+              <form onSubmit={search} style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                <input
+                  value={areaCode}
+                  onChange={(e) => setAreaCode(e.target.value.replace(/\D/g, "").slice(0, 3))}
+                  placeholder="Area code (e.g. 317)"
+                  style={{ width: 170, padding: "0.5rem 0.75rem", border: "1px solid #d1d5db", borderRadius: 8, fontSize: "0.9rem" }}
+                />
+                <button className="button" type="submit" disabled={searching} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  <Search size={14} /> {searching ? "Searching…" : "Search"}
+                </button>
+              </form>
+
+              {results && results.length > 0 && (
+                <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, overflow: "hidden", marginBottom: 10 }}>
+                  {results.map((n) => (
+                    <div key={n.phoneNumber} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: "1px solid #f3f4f6" }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: "0.88rem" }}>{n.friendlyName || n.phoneNumber}</div>
+                        {n.locality && <div style={{ fontSize: "0.76rem", color: "#9ca3af" }}>{n.locality}, {n.region}</div>}
+                      </div>
+                      <button className="button" onClick={() => provision(n.phoneNumber)} disabled={!!provisioning} style={{ fontSize: "0.8rem", padding: "0.35rem 0.85rem" }}>
+                        {provisioning === n.phoneNumber ? "Getting…" : "Get this number"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
 
       {error && <p style={{ color: "#ef4444", fontSize: "0.84rem", margin: "8px 0 0" }}>{error}</p>}
@@ -625,7 +641,6 @@ const SLOT_OPTIONS = [
 ];
 
 function AvailabilityEditor({ availability, onChange }) {
-  // Group slots by dayOfWeek for rendering
   const byDay = {};
   availability.forEach((slot, idx) => {
     const d = Number(slot.dayOfWeek);
@@ -646,7 +661,8 @@ function AvailabilityEditor({ availability, onChange }) {
   }
 
   function removeBlock(idx) {
-    onChange(availability.filter((_, i) => i !== idx));
+    const next = availability.filter((_, i) => i !== idx);
+    onChange(next);
   }
 
   function updateBlock(idx, field, value) {
@@ -655,68 +671,70 @@ function AvailabilityEditor({ availability, onChange }) {
     onChange(next);
   }
 
+  const activeDays = [1,2,3,4,5,6,0].filter((d) => !!byDay[d]);
+  const inp = { padding: "6px 8px", border: "1px solid var(--line)", borderRadius: 7, fontSize: "0.85rem", background: "#fff", color: "#0f172a" };
+
   return (
     <div>
-      {/* Day toggles */}
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 18 }}>
-        {[1, 2, 3, 4, 5, 6, 0].map((day) => {
+      {/* Day pills */}
+      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 14 }}>
+        {[1,2,3,4,5,6,0].map((day) => {
           const on = !!byDay[day];
           return (
-            <button key={day} type="button" onClick={() => toggleDay(day)} style={{ padding: "7px 14px", borderRadius: 8, border: `1.5px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent)" : "#fff", color: on ? "#fff" : "#64748b", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer", transition: "all 0.15s" }}>
+            <button key={day} type="button" onClick={() => toggleDay(day)} style={{ padding: "5px 13px", borderRadius: 99, border: `1.5px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent)" : "#fff", color: on ? "#fff" : "#64748b", fontWeight: 700, fontSize: "0.8rem", cursor: "pointer", transition: "all 0.12s" }}>
               {DAY_SHORT[day]}
             </button>
           );
         })}
       </div>
 
-      {/* Time blocks per active day */}
-      {[1, 2, 3, 4, 5, 6, 0].map((day) => {
-        if (!byDay[day]) return null;
-        return (
-          <div key={day} style={{ marginBottom: 12, border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
-            <div style={{ padding: "10px 16px", background: "#f8fafc", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontWeight: 800, fontSize: "0.88rem", color: "#0f172a" }}>{DAY_FULL[day]}</span>
-              <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>{byDay[day].length} time block{byDay[day].length !== 1 ? "s" : ""}</span>
-            </div>
-            <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
-              {byDay[day].map((slot) => (
-                <div key={slot._idx} className="m-slot" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 130px 36px", gap: 8, alignItems: "end" }}>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "0.76rem", fontWeight: 700, color: "#64748b" }}>
-                    Start time
-                    <input type="time" value={slot.startTime} onChange={(e) => updateBlock(slot._idx, "startTime", e.target.value)} style={{ padding: "8px 10px", border: "1px solid var(--line)", borderRadius: 8, fontSize: "0.88rem", background: "#fff" }} />
-                  </label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "0.76rem", fontWeight: 700, color: "#64748b" }}>
-                    End time
-                    <input type="time" value={slot.endTime} onChange={(e) => updateBlock(slot._idx, "endTime", e.target.value)} style={{ padding: "8px 10px", border: "1px solid var(--line)", borderRadius: 8, fontSize: "0.88rem", background: "#fff" }} />
-                  </label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "0.76rem", fontWeight: 700, color: "#64748b" }}>
-                    Slot length
-                    <select value={slot.slotMinutes} onChange={(e) => updateBlock(slot._idx, "slotMinutes", Number(e.target.value))} style={{ padding: "8px 10px", border: "1px solid var(--line)", borderRadius: 8, fontSize: "0.88rem", background: "#fff" }}>
-                      {SLOT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
-                  </label>
-                  <button type="button" onClick={() => removeBlock(slot._idx)} title="Remove" style={{ height: 36, width: 36, borderRadius: 8, border: "1px solid #fecaca", background: "#fff", color: "#ef4444", cursor: "pointer", fontWeight: 800, fontSize: "1.1rem", lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
-                </div>
-              ))}
-              <button type="button" onClick={() => addBlock(day)} style={{ alignSelf: "flex-start", marginTop: 4, padding: "6px 14px", borderRadius: 8, border: "1.5px dashed #cbd5e1", background: "transparent", color: "#64748b", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer" }}>
-                + Add time block
-              </button>
-            </div>
-          </div>
-        );
-      })}
+      {activeDays.length === 0 && (
+        <p style={{ color: "#94a3b8", fontSize: "0.84rem", margin: "4px 0 0" }}>No days selected — click a day above to set hours.</p>
+      )}
 
-      {Object.keys(byDay).length === 0 && (
-        <p style={{ color: "#94a3b8", fontSize: "0.85rem", padding: "12px 0 4px" }}>No days selected. Click the day buttons above to add your available hours.</p>
+      {/* Compact table: one row per time block */}
+      {activeDays.length > 0 && (
+        <div style={{ border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden" }}>
+          {/* Header */}
+          <div style={{ display: "grid", gridTemplateColumns: "80px 1fr 16px 1fr 110px 32px", gap: 8, padding: "6px 14px", background: "#f8fafc", borderBottom: "1px solid var(--line)", fontSize: "0.72rem", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", alignItems: "center" }}>
+            <span>Day</span><span>Start</span><span></span><span>End</span><span>Slot size</span><span></span>
+          </div>
+
+          {activeDays.map((day, di) => (
+            byDay[day].map((slot, bi) => (
+              <div key={slot._idx} style={{ display: "grid", gridTemplateColumns: "80px 1fr 16px 1fr 110px 32px", gap: 8, padding: "8px 14px", borderBottom: di === activeDays.length - 1 && bi === byDay[day].length - 1 ? "none" : "1px solid #f1f5f9", alignItems: "center", background: bi % 2 === 1 ? "#fafafa" : "#fff" }}>
+                <span style={{ fontWeight: 700, fontSize: "0.83rem", color: "#374151" }}>
+                  {bi === 0 ? DAY_SHORT[day] : ""}
+                </span>
+                <input type="time" value={slot.startTime} onChange={(e) => updateBlock(slot._idx, "startTime", e.target.value)} style={inp} />
+                <span style={{ textAlign: "center", color: "#94a3b8", fontSize: "0.8rem", fontWeight: 700 }}>–</span>
+                <input type="time" value={slot.endTime} onChange={(e) => updateBlock(slot._idx, "endTime", e.target.value)} style={inp} />
+                <select value={slot.slotMinutes} onChange={(e) => updateBlock(slot._idx, "slotMinutes", Number(e.target.value))} style={inp}>
+                  {SLOT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+                <button type="button" onClick={() => removeBlock(slot._idx)} title="Remove" style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #fecaca", background: "#fff", color: "#ef4444", cursor: "pointer", fontWeight: 800, fontSize: "1rem", display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+              </div>
+            ))
+          ))}
+
+          {/* Add block row */}
+          <div style={{ padding: "8px 14px", borderTop: "1px solid #f1f5f9", display: "flex", gap: 6 }}>
+            {activeDays.map((day) => (
+              <button key={day} type="button" onClick={() => addBlock(day)} style={{ padding: "4px 10px", borderRadius: 7, border: "1.5px dashed #cbd5e1", background: "transparent", color: "#64748b", fontSize: "0.76rem", fontWeight: 700, cursor: "pointer" }}>
+                + {DAY_SHORT[day]}
+              </button>
+            ))}
+            <span style={{ fontSize: "0.74rem", color: "#94a3b8", alignSelf: "center", marginLeft: 4 }}>Add a split block (e.g. lunch break)</span>
+          </div>
+        </div>
       )}
     </div>
   );
 }
 
-const defaultAvailability = [1, 2, 3, 4, 5].flatMap((dayOfWeek) => [
-  { dayOfWeek, startTime: "09:00", endTime: "12:00", slotMinutes: 60 },
-  { dayOfWeek, startTime: "13:00", endTime: "17:00", slotMinutes: 60 },
-]);
+const defaultAvailability = [1, 2, 3, 4, 5].map((dayOfWeek) => ({
+  dayOfWeek, startTime: "09:00", endTime: "17:00", slotMinutes: 60
+}));
 
 export default function Settings() {
   const [form, setForm] = useState(() => getCache("settingsForm"));
