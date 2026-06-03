@@ -311,9 +311,11 @@ function addCallContext(openAiWs, { businessName }) {
 
 function appendTranscriptLine(transcript, speaker, text) {
   const body = String(text || "").trim();
-  if (!body) return;
-  transcript.push({ speaker, body, at: new Date() });
+  if (!body) return null;
+  const line = { speaker, body, at: new Date(), persisted: false };
+  transcript.push(line);
   console.log(`[voice-ai] transcript ${speaker}: ${body}`);
+  return line;
 }
 
 function callerClearlyEnded(text) {
@@ -363,6 +365,7 @@ async function saveVoiceCall({ leadId, businessId, transcript }) {
   if (!leadId || !transcript.length) return;
 
   for (const line of transcript) {
+    if (line.persisted) continue;
     await prisma.message.create({
       data: {
         leadId,
@@ -475,6 +478,7 @@ export function handleTwilioVoiceStream(twilioWs) {
   let goodbyeSpoken = false;
   let endCallRequested = false;
   let endCallTimer = null;
+  const pendingLiveSaves = [];
 
   function maybeInitSession() {
     if (!twilioStartReceived || !openAiConnected || sessionInitialized) return;
@@ -527,6 +531,32 @@ export function handleTwilioVoiceStream(twilioWs) {
     if (endCallTimer) clearTimeout(endCallTimer);
     endCallTimer = setTimeout(() => completeCall(reason), aiSpeaking ? 2500 : 800);
   }
+
+  async function persistTranscriptLine(line) {
+    if (!line || line.persisted || !leadId) return;
+    const savePromise = (async () => {
+      await prisma.message.create({
+        data: {
+          leadId,
+          direction: line.speaker === "caller" ? "inbound" : "outbound",
+          channel: "voice",
+          body: line.body,
+          twilioSid: callSid || undefined
+        }
+      });
+      line.persisted = true;
+      await prisma.lead.update({
+        where: { id: leadId },
+        data: {
+          lastMessage: line.body,
+          status: "qualified"
+        }
+      });
+    })()
+      .catch((error) => console.error("[voice-ai] Failed to persist live transcript line:", error.message));
+    pendingLiveSaves.push(savePromise);
+    await savePromise;
+  }
   const model = process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-mini";
   const openAiWs = new WebSocket(`wss://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`, {
     headers: {
@@ -571,7 +601,8 @@ export function handleTwilioVoiceStream(twilioWs) {
     }
 
     if (event.type === "conversation.item.input_audio_transcription.completed") {
-      appendTranscriptLine(transcript, "caller", event.transcript);
+      const line = appendTranscriptLine(transcript, "caller", event.transcript);
+      persistTranscriptLine(line);
       if (callerClearlyEnded(event.transcript)) {
         callerAskedToEnd = true;
         requestModelGoodbye();
@@ -584,7 +615,8 @@ export function handleTwilioVoiceStream(twilioWs) {
 
     if (event.type === "response.audio_transcript.done" || event.type === "response.output_audio_transcript.done") {
       const finalText = event.transcript || currentAssistantTranscript;
-      appendTranscriptLine(transcript, "assistant", finalText);
+      const line = appendTranscriptLine(transcript, "assistant", finalText);
+      persistTranscriptLine(line);
       currentAssistantTranscript = "";
       if (callerAskedToEnd && assistantSaidGoodbye(finalText)) {
         goodbyeSpoken = true;
@@ -702,6 +734,7 @@ export function handleTwilioVoiceStream(twilioWs) {
     if (!saved) {
       saved = true;
       try {
+        await Promise.allSettled(pendingLiveSaves);
         await saveVoiceCall({ leadId, businessId, transcript });
         console.log(`[voice-ai] Saved voice transcript lines=${transcript.length} leadId=${leadId}`);
       } catch (error) {

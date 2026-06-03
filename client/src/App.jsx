@@ -15,6 +15,7 @@ import LeadDetail from "./pages/LeadDetail.jsx";
 import Settings from "./pages/Settings.jsx";
 import CalendarPage from "./pages/Calendar.jsx";
 import SmsSetup from "./pages/SmsSetup.jsx";
+import LiveCallDemo from "./pages/LiveCallDemo.jsx";
 import Privacy from "./pages/Privacy.jsx";
 import Terms from "./pages/Terms.jsx";
 import AcceptInvite from "./pages/AcceptInvite.jsx";
@@ -88,6 +89,7 @@ export default function App() {
         <Route path="/leads" element={<Leads />} />
         <Route path="/leads/:id" element={<LeadDetail />} />
         <Route path="/calendar" element={<CalendarPage />} />
+        <Route path="/demo/live-call" element={<LiveCallDemo />} />
         <Route path="/sms-setup" element={<SmsSetup />} />
         <Route path="/invoice" element={<CustomInvoice />} />
         <Route path="/settings" element={<Settings />} />
