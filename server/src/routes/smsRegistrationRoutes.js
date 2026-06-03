@@ -5,6 +5,109 @@ import { prisma } from "../prisma/client.js";
 import { requireAuth } from "../middleware/auth.js";
 
 const router = express.Router();
+
+// POST /api/sms-registration/platform-setup — must be defined BEFORE requireAuth so it
+// doesn't need a user JWT. Protected instead by the ADMIN_KEY env var.
+router.post(
+  "/platform-setup",
+  asyncHandler(async (req, res) => {
+    const adminKey = process.env.ADMIN_KEY;
+    if (!adminKey || req.headers["x-admin-key"] !== adminKey) {
+      return res.status(401).json({ error: "Unauthorized. Set ADMIN_KEY in Railway and pass it as X-Admin-Key header." });
+    }
+    if (process.env.TWILIO_PLATFORM_MSG_SERVICE_SID) {
+      return res.json({ ok: true, alreadyConfigured: true, messagingServiceSid: process.env.TWILIO_PLATFORM_MSG_SERVICE_SID, message: "Platform messaging service already configured." });
+    }
+
+    const client = getClient();
+    const baseUrl = (process.env.APP_BASE_URL || "").replace(/\/$/, "");
+    const steps = [];
+
+    try {
+      steps.push("Creating platform messaging service…");
+      const service = await client.messaging.v1.services.create({
+        friendlyName: "LeadRescue Platform",
+        inboundRequestUrl: baseUrl ? `${baseUrl}/webhooks/twilio/sms` : undefined,
+        fallbackUrl: baseUrl ? `${baseUrl}/webhooks/twilio/sms` : undefined,
+        useInboundWebhookOnNumber: true,
+        stickyCount: 1
+      });
+      steps.push(`Messaging service created: ${service.sid}`);
+
+      steps.push("Registering LeadRescue brand…");
+      const policySid = await getA2pPolicySid(client);
+      const profile = await client.trusthub.v1.customerProfiles.create({
+        friendlyName: "LeadRescue Platform",
+        email: process.env.PLATFORM_CONTACT_EMAIL || "hello@leadrescue.com",
+        policySid
+      });
+      const endUser = await client.trusthub.v1.endUsers.create({
+        friendlyName: "LeadRescue Inc.",
+        type: "business",
+        attributes: {
+          business_name: "LeadRescue Inc.",
+          business_registration_identifier: "NONE",
+          business_identity: "isv",
+          business_type: "CORPORATION",
+          business_industry: "TECHNOLOGY",
+          website_url: process.env.APP_BASE_URL || "https://leadrescue.com",
+          business_regions_of_operation: "USA_AND_CANADA",
+          street: process.env.PLATFORM_ADDRESS_STREET || "123 Main St",
+          city: process.env.PLATFORM_ADDRESS_CITY || "Indianapolis",
+          state_province_region: process.env.PLATFORM_ADDRESS_STATE || "IN",
+          postal_code: process.env.PLATFORM_ADDRESS_ZIP || "46201",
+          country: "US"
+        }
+      });
+      await client.trusthub.v1.customerProfiles(profile.sid).customerProfilesEntityAssignments.create({ objectSid: endUser.sid });
+      await client.trusthub.v1.customerProfiles(profile.sid).update({ status: "pending-review" });
+
+      steps.push("Registering brand with carriers…");
+      const brand = await client.messaging.v1.a2pBrandRegistrations.create({ customerProfileBundleSid: profile.sid });
+      steps.push(`Brand registered: ${brand.sid}`);
+
+      steps.push("Registering platform campaign…");
+      const campaign = await client.messaging.v1.services(service.sid).usAppToPerson.create({
+        brandRegistrationSid: brand.sid,
+        description: "LeadRescue is a SaaS platform providing AI-powered lead follow-up and appointment scheduling for local construction and home service contractors. When a customer calls or texts a contractor using LeadRescue, the AI responds to qualify the lead, collect job details, and book appointments. All messages are sent in response to customer-initiated contact only.",
+        messageFlow: "Customers opt in by calling or texting the contractor's LeadRescue number after finding it on the business website, Google Business Profile, advertising, invoices, or business cards. SMS messages are sent only in response to a customer-initiated service request.",
+        messageSamples: [
+          "LeadRescue: Sorry we missed your call to [Business Name]. What kind of service do you need help with? Reply STOP to opt out.",
+          "LeadRescue: Thanks [Customer Name]. What is the job address or ZIP code for your [Service Type] request? Reply STOP to opt out.",
+          "LeadRescue: We have your request for [Issue Description]. Is this an emergency, today, this week, or flexible? Reply STOP to opt out.",
+          "LeadRescue: [Business Name] has openings on [Date] at [Time]. Which works best? Reply STOP to opt out.",
+          "LeadRescue: You're booked with [Business Name] for [Service Type] on [Date] at [Time]. Reply STOP to opt out."
+        ],
+        usAppToPersonUsecase: "CUSTOMER_CARE",
+        hasEmbeddedLinks: false,
+        hasEmbeddedPhone: true,
+        subscriberOptIn: true,
+        subscriberOptOut: true,
+        subscriberHelp: true,
+        numberPool: true,
+        ageGated: false,
+        directLending: false,
+        embeddedLink: false,
+        embeddedPhone: true
+      });
+      steps.push(`Campaign submitted: ${campaign.sid}`);
+      steps.push("Done! Add TWILIO_PLATFORM_MSG_SERVICE_SID to Railway.");
+
+      res.json({
+        ok: true,
+        messagingServiceSid: service.sid,
+        brandSid: brand.sid,
+        campaignSid: campaign.sid,
+        steps,
+        nextStep: `Add this to Railway env vars: TWILIO_PLATFORM_MSG_SERVICE_SID=${service.sid}`
+      });
+    } catch (err) {
+      console.error("[platform-setup] Error:", err.message);
+      res.status(500).json({ ok: false, error: err.message, steps });
+    }
+  })
+);
+
 router.use(requireAuth);
 
 function getClient() {
@@ -281,116 +384,6 @@ router.post(
       res.json({ smsStatus: newStatus });
     } catch (err) {
       res.json({ smsStatus: business.smsStatus, error: err.message });
-    }
-  })
-);
-
-// POST /api/sms-registration/platform-setup
-// Run this ONCE as the LeadRescue platform owner to register the shared brand + campaign.
-// After running, copy the returned messagingServiceSid to TWILIO_PLATFORM_MSG_SERVICE_SID
-// in Railway — all future client numbers route through it automatically, no per-client wizard needed.
-// Protected by ADMIN_KEY env var (set a long random string in Railway).
-router.post(
-  "/platform-setup",
-  asyncHandler(async (req, res) => {
-    const adminKey = process.env.ADMIN_KEY;
-    if (!adminKey || req.headers["x-admin-key"] !== adminKey) {
-      return res.status(401).json({ error: "Unauthorized. Set ADMIN_KEY in Railway and pass it as X-Admin-Key header." });
-    }
-    if (process.env.TWILIO_PLATFORM_MSG_SERVICE_SID) {
-      return res.json({ ok: true, alreadyConfigured: true, messagingServiceSid: process.env.TWILIO_PLATFORM_MSG_SERVICE_SID, message: "Platform messaging service already configured. Add new client numbers to it via provisioning." });
-    }
-
-    const client = getClient();
-    const baseUrl = (process.env.APP_BASE_URL || "").replace(/\/$/, "");
-    const steps = [];
-
-    try {
-      // Step 1: Platform messaging service
-      steps.push("Creating platform messaging service…");
-      const service = await client.messaging.v1.services.create({
-        friendlyName: "LeadRescue Platform",
-        inboundRequestUrl: baseUrl ? `${baseUrl}/webhooks/twilio/sms` : undefined,
-        fallbackUrl: baseUrl ? `${baseUrl}/webhooks/twilio/sms` : undefined,
-        useInboundWebhookOnNumber: true,
-        stickyCount: 1 // sticky sender so replies go back to the same number
-      });
-      steps.push(`Messaging service created: ${service.sid}`);
-
-      // Step 2: Platform brand (LeadRescue as ISV)
-      steps.push("Registering LeadRescue brand…");
-      const policySid = await getA2pPolicySid(client);
-      const profile = await client.trusthub.v1.customerProfiles.create({
-        friendlyName: "LeadRescue Platform",
-        email: process.env.PLATFORM_CONTACT_EMAIL || "hello@leadrescue.com",
-        policySid
-      });
-
-      const endUser = await client.trusthub.v1.endUsers.create({
-        friendlyName: "LeadRescue Inc.",
-        type: "business",
-        attributes: {
-          business_name: "LeadRescue Inc.",
-          business_registration_identifier: "NONE",
-          business_identity: "isv",
-          business_type: "CORPORATION",
-          business_industry: "TECHNOLOGY",
-          website_url: process.env.APP_BASE_URL || "https://leadrescue.com",
-          business_regions_of_operation: "USA_AND_CANADA",
-          street: process.env.PLATFORM_ADDRESS_STREET || "123 Main St",
-          city: process.env.PLATFORM_ADDRESS_CITY || "Indianapolis",
-          state_province_region: process.env.PLATFORM_ADDRESS_STATE || "IN",
-          postal_code: process.env.PLATFORM_ADDRESS_ZIP || "46201",
-          country: "US"
-        }
-      });
-
-      await client.trusthub.v1.customerProfiles(profile.sid).customerProfilesEntityAssignments.create({ objectSid: endUser.sid });
-      await client.trusthub.v1.customerProfiles(profile.sid).update({ status: "pending-review" });
-
-      steps.push("Registering brand with carriers…");
-      const brand = await client.messaging.v1.a2pBrandRegistrations.create({ customerProfileBundleSid: profile.sid });
-      steps.push(`Brand registered: ${brand.sid}`);
-
-      // Step 3: Platform campaign
-      steps.push("Registering platform campaign…");
-      const campaign = await client.messaging.v1.services(service.sid).usAppToPerson.create({
-        brandRegistrationSid: brand.sid,
-        description: "LeadRescue is a SaaS platform providing AI-powered lead follow-up and appointment scheduling for local construction and home service contractors. When a customer calls or texts a contractor using LeadRescue, the AI responds to qualify the lead, collect job details, and book appointments. All messages are sent in response to customer-initiated contact only.",
-        messageFlow: "Customers opt in by calling or texting the contractor's LeadRescue number after finding it on the business website, Google Business Profile, advertising, invoices, or business cards. SMS messages are sent only in response to a customer-initiated service request.",
-        messageSamples: [
-          "LeadRescue: Sorry we missed your call to [Business Name]. What kind of service do you need help with? Reply STOP to opt out.",
-          "LeadRescue: Thanks [Customer Name]. What is the job address or ZIP code for your [Service Type] request? Reply STOP to opt out.",
-          "LeadRescue: We have your request for [Issue Description]. Is this an emergency, today, this week, or flexible? Reply STOP to opt out.",
-          "LeadRescue: [Business Name] has openings on [Date] at [Time]. Which works best? Reply STOP to opt out.",
-          "LeadRescue: You're booked with [Business Name] for [Service Type] on [Date] at [Time]. Reply STOP to opt out."
-        ],
-        usAppToPersonUsecase: "CUSTOMER_CARE",
-        hasEmbeddedLinks: false,
-        hasEmbeddedPhone: true,
-        subscriberOptIn: true,
-        subscriberOptOut: true,
-        subscriberHelp: true,
-        numberPool: true,
-        ageGated: false,
-        directLending: false,
-        embeddedLink: false,
-        embeddedPhone: true
-      });
-      steps.push(`Campaign submitted: ${campaign.sid}`);
-
-      steps.push("Done! Add TWILIO_PLATFORM_MSG_SERVICE_SID to Railway environment variables.");
-      res.json({
-        ok: true,
-        messagingServiceSid: service.sid,
-        brandSid: brand.sid,
-        campaignSid: campaign.sid,
-        steps,
-        nextStep: `Add this to Railway env vars: TWILIO_PLATFORM_MSG_SERVICE_SID=${service.sid}`
-      });
-    } catch (err) {
-      console.error("[platform-setup] Error:", err.message);
-      res.status(500).json({ ok: false, error: err.message, steps });
     }
   })
 );
