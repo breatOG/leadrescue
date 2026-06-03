@@ -323,20 +323,18 @@ button.button {
 }
 
 .brand-mark {
-  display: inline-grid;
-  place-items: center;
+  display: block;
   width: 34px;
   height: 34px;
   border-radius: 8px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-dark));
-  color: white;
-  font-size: 0.85rem;
-  box-shadow: 0 3px 10px rgba(15, 118, 110, 0.4);
+  object-fit: cover;
+  box-shadow: 0 3px 10px rgba(15, 118, 110, 0.3);
   transition: box-shadow 0.2s;
+  flex-shrink: 0;
 }
 
 .brand:hover .brand-mark {
-  box-shadow: 0 4px 14px rgba(15, 118, 110, 0.6);
+  box-shadow: 0 4px 14px rgba(15, 118, 110, 0.55);
 }
 
 .sidebar nav {
@@ -688,8 +686,7 @@ button.small {
 }
 
 .auth-aside .brand-mark {
-  background: rgba(255, 255, 255, 0.18);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
 
 .auth-aside-headline {

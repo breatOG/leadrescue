@@ -65,7 +65,7 @@ export function Layout() {
       {/* Desktop sidebar */}
       <aside className="sidebar">
         <Link className="brand" to="/dashboard">
-          <span className="brand-mark">LR</span>
+          <img src="/logo.png" alt="LeadRescue" className="brand-mark" style={{ objectFit: "cover" }} />
           <span>LeadRescue</span>
         </Link>
         <nav>
@@ -79,7 +79,7 @@ export function Layout() {
       {/* Mobile top bar */}
       <header className="mobile-topbar">
         <Link className="brand" to="/dashboard">
-          <span className="brand-mark">LR</span>
+          <img src="/logo.png" alt="LeadRescue" className="brand-mark" style={{ objectFit: "cover" }} />
           <span>LeadRescue</span>
         </Link>
         <button className="icon-btn" onClick={logout} aria-label="Log out"><LogOut size={20} /></button>

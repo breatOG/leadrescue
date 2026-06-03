@@ -52,7 +52,7 @@ export default function Subscribe() {
     <div style={s.page}>
       <div style={s.header}>
         <div style={s.logo}>
-          <div style={s.logoMark}>LR</div>
+          <img src="/logo.png" alt="LeadRescue" style={s.logoMark} />
           <span style={s.logoText}>LeadRescue</span>
         </div>
       </div>
@@ -110,7 +110,7 @@ const s = {
   page: { minHeight: "100vh", background: "#f8fafc", fontFamily: "'Inter', system-ui, sans-serif" },
   header: { padding: "1.25rem 2.5rem", background: "#fff", borderBottom: "1px solid #f1f5f9" },
   logo: { display: "flex", alignItems: "center", gap: "0.5rem" },
-  logoMark: { width: 32, height: 32, borderRadius: 8, background: `linear-gradient(135deg, ${BLUE}, #1e40af)`, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800, fontSize: "0.8rem" },
+  logoMark: { width: 32, height: 32, borderRadius: 8, objectFit: "cover", display: "block" },
   logoText: { fontWeight: 800, fontSize: "1.1rem", color: DARK },
   content: { maxWidth: 960, margin: "0 auto", padding: "4rem 2rem" },
   textCenter: { textAlign: "center", marginBottom: "3rem" },
