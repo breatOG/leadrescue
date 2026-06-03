@@ -52,7 +52,7 @@ export default function Subscribe() {
     <div style={s.page}>
       <div style={s.header}>
         <div style={s.logo}>
-          <img src="/logo.png" alt="LeadRescue" className="brand-mark" />
+          <img src="/logo.svg" alt="LeadRescue" className="brand-mark" />
           <span style={s.logoText}>LeadRescue</span>
         </div>
       </div>
