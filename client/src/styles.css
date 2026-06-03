@@ -346,6 +346,7 @@ button.button {
   height: 56px;
   border-radius: 14px;
   object-fit: cover;
+  object-position: center center;
   box-shadow: 0 4px 16px rgba(13, 122, 108, 0.35);
   transition: box-shadow 0.2s, transform 0.2s;
   flex-shrink: 0;
