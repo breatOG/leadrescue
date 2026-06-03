@@ -331,6 +331,7 @@ button.button {
   border-radius: 11px;
   object-fit: contain;
   flex-shrink: 0;
+  background: white;
   box-shadow: 0 3px 12px rgba(13, 122, 108, 0.35);
   transition: box-shadow 0.2s;
 }

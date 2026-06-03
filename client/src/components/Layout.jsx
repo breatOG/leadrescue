@@ -65,7 +65,7 @@ export function Layout() {
       {/* Desktop sidebar */}
       <aside className="sidebar">
         <Link className="brand" to="/dashboard">
-          <img src="/logo.svg" alt="LeadRescue" className="brand-mark" />
+          <img src="/logo.png" alt="LeadRescue" className="brand-mark" />
           <span>LeadRescue</span>
         </Link>
         <nav>
@@ -79,7 +79,7 @@ export function Layout() {
       {/* Mobile top bar */}
       <header className="mobile-topbar">
         <Link className="brand" to="/dashboard">
-          <img src="/logo.svg" alt="LeadRescue" className="brand-mark" />
+          <img src="/logo.png" alt="LeadRescue" className="brand-mark" />
           <span>LeadRescue</span>
         </Link>
         <button className="icon-btn" onClick={logout} aria-label="Log out"><LogOut size={20} /></button>
