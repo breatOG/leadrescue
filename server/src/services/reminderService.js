@@ -30,12 +30,13 @@ async function runReminders() {
 
     for (const apt of appointments24h) {
       const { lead, business } = apt;
-      if (!lead?.customerPhone || !business?.twilioPhoneNumber) continue;
+      const fromNumber = business.twilioPhoneNumber || process.env.TWILIO_PHONE_NUMBER;
+      if (!lead?.customerPhone || !fromNumber) continue;
       const firstName = lead.customerName?.split(" ")[0];
       const greeting = firstName ? `Hi ${firstName}!` : "Hi!";
       const body = `${greeting} Reminder: you have an appointment with ${business.name} tomorrow at ${fmtApt(apt.startAt)}. Reply CANCEL to cancel or RESCHEDULE to pick a new time.`;
       try {
-        const sent = await sendSms({ to: lead.customerPhone, from: business.twilioPhoneNumber, body });
+        const sent = await sendSms({ to: lead.customerPhone, from: fromNumber, body });
         await Promise.all([
           prisma.message.create({ data: { leadId: lead.id, direction: "outbound", channel: "sms", body, twilioSid: sent?.sid } }),
           prisma.appointment.update({ where: { id: apt.id }, data: { reminder24hSentAt: now } })
@@ -61,10 +62,11 @@ async function runReminders() {
 
     for (const apt of appointments2h) {
       const { lead, business } = apt;
-      if (!lead?.customerPhone || !business?.twilioPhoneNumber) continue;
+      const fromNumber = business.twilioPhoneNumber || process.env.TWILIO_PHONE_NUMBER;
+      if (!lead?.customerPhone || !fromNumber) continue;
       const body = `Your appointment with ${business.name} is in about 2 hours at ${fmtApt(apt.startAt)}. See you soon!`;
       try {
-        const sent = await sendSms({ to: lead.customerPhone, from: business.twilioPhoneNumber, body });
+        const sent = await sendSms({ to: lead.customerPhone, from: fromNumber, body });
         await Promise.all([
           prisma.message.create({ data: { leadId: lead.id, direction: "outbound", channel: "sms", body, twilioSid: sent?.sid } }),
           prisma.appointment.update({ where: { id: apt.id }, data: { reminder2hSentAt: now } })
@@ -90,12 +92,13 @@ async function runReminders() {
 
     for (const apt of followUps) {
       const { lead, business } = apt;
-      if (!lead?.customerPhone || !business?.twilioPhoneNumber) continue;
+      const fromNumber = business.twilioPhoneNumber || process.env.TWILIO_PHONE_NUMBER;
+      if (!lead?.customerPhone || !fromNumber) continue;
       const firstName = lead.customerName?.split(" ")[0];
       const greeting = firstName ? `Hi ${firstName}!` : "Hi!";
       const body = `${greeting} Thanks for choosing ${business.name}. We hope everything went smoothly today! If you need anything else or have questions, just reply and we'll be happy to help.`;
       try {
-        const sent = await sendSms({ to: lead.customerPhone, from: business.twilioPhoneNumber, body });
+        const sent = await sendSms({ to: lead.customerPhone, from: fromNumber, body });
         await Promise.all([
           prisma.message.create({ data: { leadId: lead.id, direction: "outbound", channel: "sms", body, twilioSid: sent?.sid } }),
           prisma.appointment.update({ where: { id: apt.id }, data: { followUpSentAt: now, status: "completed" } }),

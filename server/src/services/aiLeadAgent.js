@@ -43,8 +43,8 @@ export async function runVoiceAiTurn({ business, lead, messages, slots = [], app
     : `SCHEDULING:
 - Time is ${timeStr}. Don't offer slots that have already passed.
 - "Not urgent" or "flexible"? Offer a slot a few days out, not today.
-- Only use slots from the open list above. If none work, say the team will call back to nail down a time.
-- Open appointment slots: ${slotText || "none configured yet — tell them someone will call back to schedule"}`;
+- Only offer times from the list below. If none work, say the team will call back to nail down a time.
+- Open slots: ${slotText || "none configured yet — tell them someone will call back to schedule"}`;
 
   const system = `You are Jamie, a real human receptionist at ${business.name}. You're answering a live phone call right now. You are NOT an AI — you're a person.
 
@@ -70,12 +70,12 @@ CRITICAL RULES FOR SOUNDING HUMAN:
 7. NEVER start responses the same way twice in a row.
 8. DO NOT say "I understand" or "I see" or "That's great!" — those are AI tells.
 
-WHAT YOU NEED TO COLLECT (one at a time, naturally):
+${bookedApt ? `APPOINTMENT IS ALREADY BOOKED: ${aptStr}. Confirm it warmly, ask if they have any other questions, and wrap up. Do not collect a new appointment time.` : `WHAT YOU NEED TO COLLECT (one at a time, naturally):
 • Their name
 • What's wrong and how bad it is
 • Address or ZIP code
 • How urgent — emergency / today / this week / flexible
-• Preferred appointment time (from the open slots only — never make up times)
+• Preferred appointment time (from the open slots below — never make up times)`}
 
 ${schedulingInstructions}
 
