@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, getCache, setCache } from "../api/client.js";
 import { Badge } from "../components/Layout.jsx";
+import { displayLeadInitial, LeadName, PhoneText } from "../components/RedactedPhone.jsx";
 import { isLeadNew } from "../utils/seenLeads.js";
 
 function toneForPriority(priority) {
@@ -76,7 +77,7 @@ export default function Leads() {
               style={isNew ? { borderLeft: "3px solid #16a34a", background: "#f0fdf4" } : {}}>
               <div style={{ position: "relative", flexShrink: 0 }}>
                 <div className="lead-card-avatar" data-priority={lead.priority}>
-                  {(lead.customerName || lead.customerPhone || "?")[0].toUpperCase()}
+                  {displayLeadInitial(lead)}
                 </div>
                 {isNew && (
                   <span style={{ position: "absolute", top: -1, right: -1, width: 9, height: 9, borderRadius: "50%", background: "#16a34a", border: "2px solid #fff", animation: "pulse-dot 2s ease-in-out infinite" }} />
@@ -85,7 +86,7 @@ export default function Leads() {
               <div className="lead-card-body">
                 <div className="lead-card-head">
                   <span className="lead-card-name">
-                    {lead.customerName || lead.customerPhone}
+                    <LeadName lead={lead} />
                     {isNew && <span style={{ marginLeft: 6, fontSize: "0.65rem", fontWeight: 800, color: "#16a34a", background: "#dcfce7", padding: "1px 6px", borderRadius: 99, verticalAlign: "middle" }}>NEW</span>}
                   </span>
                   <span className="lead-card-date">{timeAgo(lead.updatedAt)}</span>
@@ -130,8 +131,8 @@ export default function Leads() {
                         {isNew && <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#16a34a", display: "inline-block", animation: "pulse-dot 2s ease-in-out infinite" }} />}
                         <span title={lead.source === "missed_call" ? "Voice call" : "SMS"}>{lead.source === "missed_call" ? "📞 " : "💬 "}</span>
                         <span>
-                          {lead.customerName || lead.customerPhone}
-                          {lead.customerName && <span style={{ color: "var(--muted)", fontSize: "0.8em", display: "block" }}>{lead.customerPhone}</span>}
+                          <LeadName lead={lead} />
+                          {lead.customerName && <PhoneText style={{ color: "var(--muted)", fontSize: "0.8em", display: "block" }}>{lead.customerPhone}</PhoneText>}
                         </span>
                       </span>
                     </td>

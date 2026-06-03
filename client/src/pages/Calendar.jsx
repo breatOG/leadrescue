@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, ChevronLeft, ChevronRight, Clock, MapPin, Phone, User } from "lucide-react";
 import { api, getCache, setCache } from "../api/client.js";
+import { LeadName, PhoneText } from "../components/RedactedPhone.jsx";
 import { businessDateKey, formatBusinessDate, formatBusinessDateTime, formatBusinessTime } from "../utils/dates.js";
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -116,14 +117,14 @@ function AppointmentCard({ appt, onUpdate }) {
         <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 3 }}>
           <User size={12} style={{ color: "#6b7280", flexShrink: 0 }} />
           <span style={{ fontWeight: 600, fontSize: "0.875rem" }}>
-            {appt.lead?.customerName || "Unknown customer"}
+            <LeadName lead={appt.lead} />
           </span>
         </div>
 
         {appt.lead?.customerPhone && (
           <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 3 }}>
             <Phone size={12} style={{ color: "#6b7280", flexShrink: 0 }} />
-            <span style={{ fontSize: "0.82rem", color: "#374151" }}>{appt.lead.customerPhone}</span>
+            <PhoneText style={{ fontSize: "0.82rem", color: "#374151" }}>{appt.lead.customerPhone}</PhoneText>
           </div>
         )}
 
@@ -421,7 +422,7 @@ export default function CalendarPage() {
                     <div style={{ flexShrink: 0, width: 8, height: 8, borderRadius: "50%", background: urg.text }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 600, fontSize: "0.82rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {a.lead?.customerName || a.lead?.customerPhone || "Unknown"}
+                        <LeadName lead={a.lead} />
                       </div>
                       <div style={{ fontSize: "0.75rem", color: "#9ca3af" }}>
                         {formatBusinessDate(a.startAt, { month: "short", day: "numeric" })} · {fmtTime(a.startAt)}

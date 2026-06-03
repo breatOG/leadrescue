@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { AlertTriangle, ArrowRight, CalendarCheck, MessageCircle, PhoneMissed, TrendingUp, Zap } from "lucide-react";
 import { api, getCache, setCache } from "../api/client.js";
 import { Badge } from "../components/Layout.jsx";
+import { displayLeadInitial, LeadName } from "../components/RedactedPhone.jsx";
 import { isLeadNew } from "../utils/seenLeads.js";
 
 function fmt(e164) {
@@ -211,7 +212,7 @@ export default function Dashboard() {
                   {/* Avatar + new dot */}
                   <div style={{ position: "relative", flexShrink: 0 }}>
                     <div style={{ width: 38, height: 38, borderRadius: "50%", background: "#f1f5f9", border: `2px solid ${dot}40`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.82rem", color: "#475569" }}>
-                      {(lead.customerName || lead.customerPhone || "?")[0].toUpperCase()}
+                      {displayLeadInitial(lead)}
                     </div>
                     {isNew && (
                       <span style={{ position: "absolute", top: 0, right: 0, width: 10, height: 10, borderRadius: "50%", background: "#16a34a", border: "2px solid #fff", animation: "pulse-dot 2s ease-in-out infinite" }} />
@@ -220,7 +221,7 @@ export default function Dashboard() {
 
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontWeight: 700, fontSize: "0.9rem", color: "#0f172a" }}>{lead.customerName || lead.customerPhone}</span>
+                      <LeadName lead={lead} style={{ fontWeight: 700, fontSize: "0.9rem", color: "#0f172a" }} />
                       <div style={{ width: 6, height: 6, borderRadius: "50%", background: dot, flexShrink: 0 }} />
                       {lead.source === "missed_call" ? <span style={{ fontSize: "0.72rem", color: "#64748b" }}>📞 Call</span> : <span style={{ fontSize: "0.72rem", color: "#64748b" }}>💬 SMS</span>}
                     </div>

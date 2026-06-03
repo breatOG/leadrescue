@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { api, getCache, setCache } from "../api/client.js";
 import { markLeadSeen } from "../utils/seenLeads.js";
 import { Badge } from "../components/Layout.jsx";
+import { PhoneText } from "../components/RedactedPhone.jsx";
 import { formatBusinessDateTime } from "../utils/dates.js";
 
 function AppointmentRow({ apt, onUpdate }) {
@@ -135,6 +136,9 @@ function sessionTitle(messages, index) {
     channelLabel,
     meta: `${formatBusinessDateTime(first.createdAt, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} - ${inbound} customer, ${outbound} team`,
     shortDate: formatBusinessDateTime(first.createdAt, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
+    dateRange: first.id === last.id
+      ? formatBusinessDateTime(first.createdAt, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+      : `${formatBusinessDateTime(first.createdAt, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} to ${formatBusinessDateTime(last.createdAt, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`,
     inbound,
     outbound
   };
@@ -162,11 +166,12 @@ function summarizeSession(session, lead) {
 
   const hasAppointment = /\b(booked|confirmed|appointment|schedule|reschedule)\b/i.test(allText);
   const hasCustomerReply = session.messages.some((message) => message.direction === "inbound");
-  const summary = latestCustomerMessage
+  const coreSummary = latestCustomerMessage
     ? latestCustomerMessage.slice(0, 180)
     : inboundText
       ? inboundText.slice(0, 180)
       : "No customer message in this session.";
+  const summary = `${session.channelLabel} on ${session.dateRange}: ${coreSummary}`;
 
   let nextStep = "Review this session and follow up if needed.";
   if (hasAppointment) nextStep = "Check the appointment details before replying.";
@@ -334,7 +339,7 @@ export default function LeadDetail() {
         <div className="page-header compact">
           <div>
             <p className="eyebrow">{lead.source === "missed_call" ? "📞 Voice lead" : "💬 SMS lead"} · Lead detail</p>
-            <h1>{lead.customerName || lead.customerPhone}</h1>
+            <h1>{lead.customerName || <PhoneText>{lead.customerPhone}</PhoneText>}</h1>
           </div>
           <button className="ghost" onClick={closeLead}>Mark closed</button>
         </div>
@@ -348,7 +353,10 @@ export default function LeadDetail() {
         <h2>Customer info</h2>
         <div className="detail-fields">
           <Field label="Name" value={lead.customerName} />
-          <Field label="Phone" value={lead.customerPhone} />
+          <div className="detail-field">
+            <span className="detail-label">Phone</span>
+            <strong><PhoneText>{lead.customerPhone}</PhoneText></strong>
+          </div>
           <Field label="Address" value={lead.address} />
           <Field label="ZIP code" value={lead.zipCode} />
         </div>
@@ -489,7 +497,7 @@ export default function LeadDetail() {
               {activeSessionBrief && (
                 <div className="conversation-brief">
                   <div>
-                    <span>Summary</span>
+                    <span>AI summary for this conversation</span>
                     <p>{activeSessionBrief.summary}</p>
                   </div>
                   <div>

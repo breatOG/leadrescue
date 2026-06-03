@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CheckCircle, Clock, MessageSquare, ShieldCheck, XCircle } from "lucide-react";
 import { api } from "../api/client.js";
+import { PhoneText, shouldRedactPhones } from "../components/RedactedPhone.jsx";
 
 const STEPS = ["Business info", "Contact person", "Messaging details", "Review & submit"];
 
@@ -316,7 +317,7 @@ export default function SmsSetup() {
                 <input style={inputStyle} type="email" value={form.contactEmail} onChange={set("contactEmail")} placeholder="john@smithplumbing.com" />
               </Field>
               <Field label="Phone">
-                <input style={inputStyle} value={form.contactPhone} onChange={set("contactPhone")} placeholder="+13175550100" />
+                <input className={shouldRedactPhones() ? "redacted-phone-input" : ""} style={inputStyle} value={form.contactPhone} onChange={set("contactPhone")} placeholder="+13175550100" />
               </Field>
             </div>
           </div>
@@ -429,7 +430,7 @@ export default function SmsSetup() {
                 {rows.map(([label, value]) => (
                   <div key={label} style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: 12, padding: "8px 14px", borderTop: "1px solid #f3f4f6", fontSize: "0.83rem" }}>
                     <span style={{ color: "#9ca3af", fontWeight: 600 }}>{label}</span>
-                    <span style={{ color: "#111827", wordBreak: "break-word" }}>{value}</span>
+                    <span style={{ color: "#111827", wordBreak: "break-word" }}>{label === "Phone" ? <PhoneText>{value}</PhoneText> : value}</span>
                   </div>
                 ))}
               </div>

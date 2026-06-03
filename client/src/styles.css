@@ -562,6 +562,16 @@ button.button {
   color: #475569;
 }
 
+.redacted-phone {
+  display: inline-block;
+  filter: blur(6px);
+  user-select: none;
+}
+
+.redacted-phone-input {
+  filter: blur(6px);
+}
+
 .table-wrap {
   overflow-x: auto;
 }

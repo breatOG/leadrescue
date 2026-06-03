@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { CheckCircle, MessageSquare, ShieldCheck, Zap } from "lucide-react";
 import { api, getCache, setCache, getUser } from "../api/client.js";
+import { shouldRedactPhones } from "../components/RedactedPhone.jsx";
 
 // Accept any common format (8123141609, 812-314-1609, (812)314-1609, +18123141609)
 // and normalize to E.164 (+1XXXXXXXXXX) for storage.
@@ -774,6 +775,7 @@ export default function Settings() {
             onChange={(e) => setField("ownerNotificationPhone", e.target.value)}
             onBlur={(e) => setField("ownerNotificationPhone", fmtPhone(e.target.value))}
             placeholder="(317) 555-0100"
+            className={shouldRedactPhones() ? "redacted-phone-input" : ""}
           />
           {!form.ownerNotificationPhone && (
             <span style={{ fontSize: "0.74rem", color: "#b45309", fontWeight: 600 }}>Add your number so we know where to ring you.</span>
@@ -800,7 +802,7 @@ export default function Settings() {
         {(form.callHandlingMode || "ring_first") === "ring_first" && (
           <label style={{ marginTop: 12 }}>
             Also ring these team numbers <span style={{ fontWeight: 400, color: "#94a3b8", fontSize: "0.78rem" }}>(optional)</span>
-            <input value={form.ringNumbersText || ""} onChange={(e) => setField("ringNumbersText", e.target.value)} placeholder="+13175550111, +13175550222" />
+            <input className={shouldRedactPhones() ? "redacted-phone-input" : ""} value={form.ringNumbersText || ""} onChange={(e) => setField("ringNumbersText", e.target.value)} placeholder="+13175550111, +13175550222" />
             <span style={{ fontSize: "0.74rem", color: "#94a3b8", fontWeight: 400 }}>Comma-separated. We ring everyone at once — whoever answers and presses 1 gets the call.</span>
           </label>
         )}

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { Bell, CalendarDays, CalendarRange, LayoutDashboard, LogOut, Mail, Settings, Table2, X } from "lucide-react";
 import { api, getUser, setToken, setUser } from "../api/client.js";
+import { LeadName } from "./RedactedPhone.jsx";
 import { isLeadNew } from "../utils/seenLeads.js";
 
 function VerifyEmailBanner() {
@@ -146,7 +147,7 @@ export function Layout() {
             <Bell size={18} />
             <Link to={`/leads/${latestActivity.id}`} onClick={dismissActivity}>
               <strong>New {latestActivity.source === "missed_call" ? "call" : "message"}</strong>
-              <span>{latestActivity.customerName || latestActivity.customerPhone}</span>
+              <LeadName lead={latestActivity} />
             </Link>
             <button onClick={dismissActivity} aria-label="Dismiss notification"><X size={16} /></button>
           </div>
