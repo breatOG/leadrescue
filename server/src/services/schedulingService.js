@@ -43,12 +43,22 @@ export async function getAvailableSlots(businessId, daysAhead = 10) {
   return slots.slice(0, 12);
 }
 
-export async function bookAppointment({ businessId, leadId, startAt, notes }) {
-  const slots = await getAvailableSlots(businessId);
-  const selected = slots.find((slot) => slot.startAt === startAt);
+export async function bookAppointment({ businessId, leadId, startAt, notes, force = false }) {
+  let selected;
 
-  if (!selected) {
-    throw new Error("Selected appointment slot is no longer available");
+  if (force) {
+    // Manual booking from the dashboard — skip slot availability check and
+    // just use the requested time. Default slot length is 1 hour.
+    selected = {
+      startAt,
+      endAt: new Date(new Date(startAt).getTime() + 60 * 60 * 1000).toISOString(),
+    };
+  } else {
+    const slots = await getAvailableSlots(businessId);
+    selected = slots.find((slot) => slot.startAt === startAt);
+    if (!selected) {
+      throw new Error("Selected appointment slot is no longer available");
+    }
   }
 
   const appointment = await prisma.appointment.create({

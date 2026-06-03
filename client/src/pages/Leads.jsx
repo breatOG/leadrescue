@@ -46,6 +46,10 @@ export default function Leads() {
 
   const newCount = leads.filter(isLeadNew).length;
 
+  useEffect(() => {
+    document.title = newCount > 0 ? `(${newCount}) LeadRescue` : "LeadRescue";
+  }, [newCount]);
+
   return (
     <div className="page">
       <div className="page-header">

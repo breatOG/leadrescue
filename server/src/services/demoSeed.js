@@ -46,6 +46,22 @@ export async function seedDemoAccount() {
       });
     }
 
+    // Seed Mon–Sat 8 AM–6 PM availability if the business has none
+    const bizRecord = await prisma.business.findUnique({ where: { ownerId: user.id }, include: { availability: true } });
+    if (bizRecord && bizRecord.availability.length === 0) {
+      const workDays = [1, 2, 3, 4, 5, 6]; // Mon–Sat
+      await prisma.businessAvailability.createMany({
+        data: workDays.map((day) => ({
+          businessId: bizRecord.id,
+          dayOfWeek: day,
+          startTime: "08:00",
+          endTime: "18:00",
+          slotMinutes: 60,
+        })),
+      });
+      console.log("[demo-seed] ✅ Availability seeded Mon–Sat 8 AM–6 PM");
+    }
+
     console.log(`[demo-seed] ✅ ${DEMO_EMAIL} → phone ${DEMO_PHONE}`);
   } catch (err) {
     console.error("[demo-seed] failed:", err.message);

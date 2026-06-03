@@ -166,6 +166,8 @@ export default function CalendarPage() {
 
   useEffect(() => {
     loadAppointments().finally(() => setLoading(false));
+    const interval = setInterval(loadAppointments, 20000);
+    return () => clearInterval(interval);
   }, []);
 
   const today = new Date();

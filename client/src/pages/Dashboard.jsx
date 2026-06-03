@@ -133,6 +133,10 @@ export default function Dashboard() {
   const hasConversations = data.recentConversations.length > 0;
   const newCount = data.recentConversations.filter(isLeadNew).length;
 
+  useEffect(() => {
+    document.title = newCount > 0 ? `(${newCount}) LeadRescue` : "LeadRescue";
+  }, [newCount]);
+
   return (
     <div className="page">
       <div className="page-header" style={{ marginBottom: 24 }}>
