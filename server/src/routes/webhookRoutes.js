@@ -12,18 +12,41 @@ import { PLAN_LIMITS } from "./paymentRoutes.js";
 
 // In-memory TTS audio cache: id -> { buffer, createdAt }
 const ttsCache = new Map();
+// Dedup map so identical phrases share one cached buffer: text -> id
+const ttsByText = new Map();
 
 // SMS Choice Mode: tracks which lead the owner was last notified about per business.
 // businessId -> { leadId, customerPhone, notifiedAt }
 const ownerControlMap = new Map();
 setInterval(() => {
-  const cutoff = Date.now() - 5 * 60 * 1000;
+  const dynamicCutoff = Date.now() - 5 * 60 * 1000;
+  const staticCutoff = Date.now() - 30 * 60 * 1000;
   for (const [id, entry] of ttsCache) {
-    if (entry.createdAt < cutoff) ttsCache.delete(id);
+    const cutoff = entry.static ? staticCutoff : dynamicCutoff;
+    if (entry.createdAt < cutoff) {
+      ttsCache.delete(id);
+    }
+  }
+  // Clean ttsByText of any stale ids
+  for (const [text, id] of ttsByText) {
+    if (!ttsCache.has(id)) ttsByText.delete(text);
   }
 }, 60_000).unref();
 
-async function generateTtsAudio(text) {
+// Static phrases that repeat across every call — cache them permanently (30 min TTL).
+const STATIC_TTS_PHRASES = new Set([
+  "Sorry, I didn't catch that. Please call us back and we will be happy to help.",
+  "Sorry, I didn't catch that. Feel free to call us back anytime.",
+]);
+
+async function generateTtsAudio(text, { reusable = false } = {}) {
+  const isStatic = reusable || STATIC_TTS_PHRASES.has(text);
+
+  if (isStatic) {
+    const existing = ttsByText.get(text);
+    if (existing && ttsCache.has(existing)) return existing;
+  }
+
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const response = await openai.audio.speech.create({
     model: "tts-1",
@@ -33,7 +56,8 @@ async function generateTtsAudio(text) {
   });
   const buffer = Buffer.from(await response.arrayBuffer());
   const id = crypto.randomUUID();
-  ttsCache.set(id, { buffer, createdAt: Date.now() });
+  ttsCache.set(id, { buffer, createdAt: Date.now(), static: isStatic });
+  if (isStatic) ttsByText.set(text, id);
   return id;
 }
 
@@ -314,7 +338,8 @@ router.get(
   asyncHandler(async (req, res) => {
     const entry = ttsCache.get(req.params.id);
     if (!entry) return res.status(404).send("Not found");
-    ttsCache.delete(req.params.id);
+    // Static phrases stay cached for reuse; dynamic AI responses evict on first play.
+    if (!entry.static) ttsCache.delete(req.params.id);
     res.set("Content-Type", "audio/mpeg").send(entry.buffer);
   })
 );

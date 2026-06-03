@@ -24,16 +24,31 @@ export function hasTwilioConfig() {
   );
 }
 
+function toE164(raw) {
+  if (!raw) return null;
+  const digits = String(raw).replace(/\D/g, "");
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits[0] === "1") return `+${digits}`;
+  if (digits.length >= 7 && digits.length <= 15) return `+${digits}`;
+  return null;
+}
+
 export async function sendSms({ to, from, body }) {
+  const normalizedTo = toE164(to);
+  if (!normalizedTo) {
+    console.error(`[twilio] Skipping SMS — invalid 'to' number: "${to}"`);
+    return null;
+  }
+
   const client = getClient();
 
   if (!client) {
-    console.log(`[mock twilio] SMS ${from || process.env.TWILIO_PHONE_NUMBER} -> ${to}: ${body}`);
+    console.log(`[mock twilio] SMS ${from || process.env.TWILIO_PHONE_NUMBER} -> ${normalizedTo}: ${body}`);
     return { sid: `mock_${Date.now()}`, mock: true };
   }
 
   const params = {
-    to,
+    to: normalizedTo,
     from: from || process.env.TWILIO_PHONE_NUMBER,
     body
   };

@@ -233,9 +233,22 @@ export async function runAiLeadAgent({ business, lead, messages }) {
     availableSlots: slots.slice(0, 5)
   };
 
+  const leadSnapshot = {
+    customerName: lead.customerName,
+    customerPhone: lead.customerPhone,
+    jobType: lead.jobType,
+    issueDescription: lead.issueDescription,
+    urgency: lead.urgency,
+    address: lead.address,
+    zipCode: lead.zipCode,
+    status: lead.status,
+    handoffMode: lead.handoffMode
+  };
+
   const completion = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     response_format: { type: "json_object" },
+    max_tokens: 350,
     messages: [
       {
         role: "system",
@@ -246,11 +259,10 @@ export async function runAiLeadAgent({ business, lead, messages }) {
         role: "user",
         content: JSON.stringify({
           businessProfile: profile,
-          lead,
-          conversation: messages.map((message) => ({
+          lead: leadSnapshot,
+          conversation: messages.slice(-10).map((message) => ({
             direction: message.direction,
-            body: message.body,
-            createdAt: message.createdAt
+            body: message.body
           }))
         })
       }
