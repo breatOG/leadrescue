@@ -329,8 +329,7 @@ button.button {
   width: 44px;
   height: 44px;
   border-radius: 11px;
-  /* Zoom into the icon portion of the landscape marketing image */
-  background: url('/logo.png') center / 220% #0a5e52;
+  object-fit: contain;
   flex-shrink: 0;
   box-shadow: 0 3px 12px rgba(13, 122, 108, 0.35);
   transition: box-shadow 0.2s;
