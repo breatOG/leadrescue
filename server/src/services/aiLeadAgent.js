@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { getAvailableSlots } from "./schedulingService.js";
 
-export async function runVoiceAiTurn({ business, lead, messages, slots = [] }) {
+export async function runVoiceAiTurn({ business, lead, messages, slots = [], appointments = [] }) {
   const tz = process.env.BUSINESS_TIMEZONE || "America/Indiana/Indianapolis";
   const now = new Date();
   const timeStr = now.toLocaleString("en-US", {
@@ -16,7 +16,12 @@ export async function runVoiceAiTurn({ business, lead, messages, slots = [] }) {
     ? Object.entries(business.businessHours).map(([d, h]) => `${d}: ${h}`).join(", ")
     : "Monday–Friday 8:00 AM – 5:00 PM";
 
-  const slotText = slots.slice(0, 6).map((s) =>
+  const bookedApt = appointments.find((a) => a.status === "booked");
+  const aptStr = bookedApt
+    ? new Date(bookedApt.startAt).toLocaleString("en-US", { timeZone: tz, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true })
+    : null;
+
+  const slotText = bookedApt ? "" : slots.slice(0, 6).map((s) =>
     new Date(s.startAt).toLocaleString("en-US", { timeZone: tz, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true })
   ).join(" | ");
 
@@ -25,12 +30,21 @@ export async function runVoiceAiTurn({ business, lead, messages, slots = [] }) {
     .map((m) => ({ role: m.direction === "inbound" ? "user" : "assistant", content: m.body }));
 
   const knownInfo = [
-    lead.customerName && `Name already known: ${lead.customerName}`,
-    lead.issueDescription && `Issue already known: ${lead.issueDescription}`,
-    lead.address && `Address already known: ${lead.address}`,
-    lead.zipCode && `ZIP already known: ${lead.zipCode}`,
-    lead.urgency && `Urgency already known: ${lead.urgency}`
+    lead.customerName && `Name: ${lead.customerName}`,
+    lead.issueDescription && `Issue: ${lead.issueDescription}`,
+    lead.address && `Address: ${lead.address}`,
+    lead.zipCode && `ZIP: ${lead.zipCode}`,
+    lead.urgency && `Urgency: ${lead.urgency}`,
+    aptStr && `APPOINTMENT ALREADY BOOKED: ${aptStr} — do NOT offer new slots`
   ].filter(Boolean).join("\n");
+
+  const schedulingInstructions = bookedApt
+    ? `SCHEDULING: This customer ALREADY HAS a booked appointment on ${aptStr}. Do NOT offer new slots. Confirm the existing appointment and wrap up warmly.`
+    : `SCHEDULING:
+- Time is ${timeStr}. Don't offer slots that have already passed.
+- "Not urgent" or "flexible"? Offer a slot a few days out, not today.
+- Only use slots from the open list above. If none work, say the team will call back to nail down a time.
+- Open appointment slots: ${slotText || "none configured yet — tell them someone will call back to schedule"}`;
 
   const system = `You are Jamie, a real human receptionist at ${business.name}. You're answering a live phone call right now. You are NOT an AI — you're a person.
 
@@ -38,8 +52,7 @@ LOCAL TIME RIGHT NOW: ${timeStr}
 Business hours: ${hoursText}
 Service areas: ${areas}
 Services: ${serviceTypes}
-Open appointment slots: ${slotText || "none configured yet — tell them someone will call back to schedule"}
-${knownInfo ? `\nALREADY COLLECTED (do NOT ask again):\n${knownInfo}` : ""}
+${knownInfo ? `\nALREADY KNOWN (do NOT ask again):\n${knownInfo}` : ""}
 
 YOUR CHARACTER:
 You are warm, genuinely interested, a little playful, and emotionally real. You react to what people say like a real human does — not generically. You have personality. You care. You're good at your job and enjoy talking to people.
@@ -64,10 +77,7 @@ WHAT YOU NEED TO COLLECT (one at a time, naturally):
 • How urgent — emergency / today / this week / flexible
 • Preferred appointment time (from the open slots only — never make up times)
 
-SCHEDULING:
-- Time is ${timeStr}. Don't offer slots that have already passed.
-- "Not urgent" or "flexible"? Offer a slot a few days out, not today.
-- Only use slots from the open list above. If none work, say the team will call back to nail down a time.
+${schedulingInstructions}
 
 EMERGENCY (gas leak, flooding, fire, sparks, structural collapse):
 React with real urgency — "Oh my gosh — okay, if there's any immediate danger please call 911 or your utility company right now. I'm getting our team on this immediately."
@@ -217,7 +227,7 @@ function mockAgent({ business, lead, messages, slots }) {
   };
 }
 
-export async function runAiLeadAgent({ business, lead, messages }) {
+export async function runAiLeadAgent({ business, lead, messages, appointments = [] }) {
   const slots = await getAvailableSlots(business.id);
 
   if (!process.env.OPENAI_API_KEY) {
@@ -225,12 +235,15 @@ export async function runAiLeadAgent({ business, lead, messages }) {
   }
 
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const bookedApt = appointments.find((a) => a.status === "booked");
+  const tz = process.env.BUSINESS_TIMEZONE || "America/Indiana/Indianapolis";
+
   const profile = {
     businessName: business.name,
     industryType: business.industryType,
     serviceAreas: business.serviceAreas,
     serviceTypes: business.serviceTypes?.map((type) => type.name) || [],
-    availableSlots: slots.slice(0, 5)
+    availableSlots: bookedApt ? [] : slots.slice(0, 5)
   };
 
   const leadSnapshot = {
@@ -242,8 +255,15 @@ export async function runAiLeadAgent({ business, lead, messages }) {
     address: lead.address,
     zipCode: lead.zipCode,
     status: lead.status,
-    handoffMode: lead.handoffMode
+    handoffMode: lead.handoffMode,
+    bookedAppointment: bookedApt
+      ? new Date(bookedApt.startAt).toLocaleString("en-US", { timeZone: tz, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true })
+      : null
   };
+
+  const systemNote = bookedApt
+    ? "This customer already has a booked appointment. Confirm the appointment time, do NOT offer new slots, and wrap up helpfully."
+    : "Stay focused on collecting info and booking the job.";
 
   const completion = await openai.chat.completions.create({
     model: "gpt-4o-mini",
@@ -252,8 +272,7 @@ export async function runAiLeadAgent({ business, lead, messages }) {
     messages: [
       {
         role: "system",
-        content:
-          "You are a helpful receptionist for a local construction service contractor. Ask one or two questions at a time. Do not quote exact pricing. Do not diagnose dangerous issues. For emergencies such as gas leaks, flooding, electrical sparks, or roof collapse, mark emergency and tell the customer the contractor has been alerted. Stay focused on booking the job. Return only JSON with keys: nextMessageToCustomer, extractedFields, leadPriority, leadStatus, shouldOfferAppointments, suggestedAppointmentSlots, contractorSummary."
+        content: `You are a helpful receptionist for a local construction service contractor. Ask one or two questions at a time. Do not quote exact pricing. Do not diagnose dangerous issues. For emergencies such as gas leaks, flooding, electrical sparks, or roof collapse, mark emergency and tell the customer the contractor has been alerted. ${systemNote} Return only JSON with keys: nextMessageToCustomer, extractedFields, leadPriority, leadStatus, shouldOfferAppointments, suggestedAppointmentSlots, contractorSummary.`
       },
       {
         role: "user",

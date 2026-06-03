@@ -43,4 +43,38 @@ router.post(
   })
 );
 
+router.patch(
+  "/appointments/:id",
+  asyncHandler(async (req, res) => {
+    const { status, notes } = req.body;
+    const valid = ["booked", "cancelled", "completed"];
+    if (status && !valid.includes(status)) {
+      return res.status(400).json({ error: "Invalid status. Must be booked, cancelled, or completed." });
+    }
+
+    const apt = await prisma.appointment.findFirst({
+      where: { id: req.params.id, businessId: req.business.id }
+    });
+    if (!apt) return res.status(404).json({ error: "Appointment not found" });
+
+    const updated = await prisma.appointment.update({
+      where: { id: req.params.id },
+      data: {
+        ...(status ? { status } : {}),
+        ...(notes !== undefined ? { notes } : {})
+      },
+      include: { lead: true }
+    });
+
+    // Keep lead status in sync
+    if (status === "cancelled") {
+      await prisma.lead.update({ where: { id: apt.leadId }, data: { status: "qualified" } });
+    } else if (status === "completed") {
+      await prisma.lead.update({ where: { id: apt.leadId }, data: { status: "closed" } });
+    }
+
+    res.json({ appointment: updated });
+  })
+);
+
 export default router;

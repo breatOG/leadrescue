@@ -26,6 +26,7 @@ import smsRegistrationRoutes from "./routes/smsRegistrationRoutes.js";
 import inviteRoutes from "./routes/inviteRoutes.js";
 import { hasTwilioConfig } from "./services/twilioService.js";
 import { hasEmailConfig } from "./services/emailService.js";
+import { startReminderScheduler } from "./services/reminderService.js";
 import { WebSocketServer } from "ws";
 import { handleTwilioVoiceStream, aiVoiceEnabled } from "./services/realtimeVoiceService.js";
 
@@ -160,6 +161,7 @@ app.use((error, req, res, next) => {
 
 server.listen(port, () => {
   console.log(`LeadRescue API running on http://localhost:${port}`);
+  startReminderScheduler();
 });
 
 if (aiVoiceEnabled()) {

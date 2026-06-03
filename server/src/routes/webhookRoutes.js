@@ -275,6 +275,51 @@ router.post(
       return res.type("text/xml").send("<Response></Response>");
     }
 
+    // Load any booked appointment for this lead — used for cancel/reschedule and AI context
+    const leadAppointments = await prisma.appointment.findMany({
+      where: { leadId: lead.id, status: "booked" },
+      orderBy: { startAt: "asc" }
+    });
+
+    // Cancel / reschedule keywords
+    const lcBody = inboundBody.toLowerCase();
+    if (/\bcancel\b/.test(lcBody) && leadAppointments.length) {
+      const apt = leadAppointments[0];
+      await prisma.appointment.update({ where: { id: apt.id }, data: { status: "cancelled" } });
+      await prisma.lead.update({ where: { id: lead.id }, data: { status: "qualified" } });
+      const tz = process.env.BUSINESS_TIMEZONE || "America/Indiana/Indianapolis";
+      const aptStr = new Date(apt.startAt).toLocaleString("en-US", { timeZone: tz, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
+      const cancelMsg = `Your appointment on ${aptStr} has been cancelled. Reply RESCHEDULE if you'd like to pick a new time, or we'll follow up with you shortly.`;
+      const sent = await sendSms({ to: lead.customerPhone, from: twilioFrom, body: cancelMsg }).catch(() => null);
+      await prisma.message.create({ data: { leadId: lead.id, direction: "outbound", channel: "sms", body: cancelMsg, twilioSid: sent?.sid } });
+      await prisma.lead.update({ where: { id: lead.id }, data: { lastMessage: cancelMsg } });
+      notifyContractor({ business, lead, summary: `Customer cancelled appointment for ${aptStr}.` }).catch(() => {});
+      return res.type("text/xml").send("<Response></Response>");
+    }
+
+    if (/\breschedule\b/.test(lcBody) || (/\bschedule\b/.test(lcBody) && leadAppointments.length)) {
+      if (leadAppointments.length) {
+        await prisma.appointment.update({ where: { id: leadAppointments[0].id }, data: { status: "cancelled" } });
+      }
+      const newSlots = await getAvailableSlots(business.id);
+      if (!newSlots.length) {
+        const noSlotsMsg = `We don't have any open slots right now — our team will reach out shortly to find a time that works.`;
+        const sent = await sendSms({ to: lead.customerPhone, from: twilioFrom, body: noSlotsMsg }).catch(() => null);
+        await prisma.message.create({ data: { leadId: lead.id, direction: "outbound", channel: "sms", body: noSlotsMsg, twilioSid: sent?.sid } });
+        await prisma.lead.update({ where: { id: lead.id }, data: { status: "qualified", lastMessage: noSlotsMsg } });
+        return res.type("text/xml").send("<Response></Response>");
+      }
+      const tz = process.env.BUSINESS_TIMEZONE || "America/Indiana/Indianapolis";
+      const slotList = newSlots.slice(0, 3).map((s, i) =>
+        `${i + 1}. ${new Date(s.startAt).toLocaleString("en-US", { timeZone: tz, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true })}`
+      ).join("\n");
+      const reschedMsg = `Here are the next available times:\n\n${slotList}\n\nReply 1, 2, or 3 to pick a slot.`;
+      const sent = await sendSms({ to: lead.customerPhone, from: twilioFrom, body: reschedMsg }).catch(() => null);
+      await prisma.message.create({ data: { leadId: lead.id, direction: "outbound", channel: "sms", body: reschedMsg, twilioSid: sent?.sid } });
+      await prisma.lead.update({ where: { id: lead.id }, data: { status: "qualified", lastMessage: reschedMsg } });
+      return res.type("text/xml").send("<Response></Response>");
+    }
+
     // Appointment slot selection (if they texted 1/2/3 after being qualified)
     const bookedResponse = await handleAppointmentChoice({ business, lead, body: inboundBody });
     if (bookedResponse) return res.type("text/xml").send("<Response></Response>");
@@ -292,7 +337,7 @@ router.post(
       // They replied with info — run AI once to extract fields, then confirm and close the loop
       try {
         const messages = await prisma.message.findMany({ where: { leadId: lead.id }, orderBy: { createdAt: "asc" } });
-        const aiResult = await runAiLeadAgent({ business, lead, messages });
+        const aiResult = await runAiLeadAgent({ business, lead, messages, appointments: leadAppointments });
 
         const name = aiResult.extractedFields?.customerName || lead.customerName;
         const jobType = aiResult.extractedFields?.jobType || lead.jobType;
@@ -413,11 +458,12 @@ async function respondWithAi(req, res, { business, lead }) {
     );
   }
 
-  const [initMessages, slots] = await Promise.all([
+  const [initMessages, slots, appointments] = await Promise.all([
     prisma.message.findMany({ where: { leadId: updatedLead.id }, orderBy: { createdAt: "asc" } }),
-    getAvailableSlots(business.id)
+    getAvailableSlots(business.id),
+    prisma.appointment.findMany({ where: { leadId: updatedLead.id, status: "booked" }, orderBy: { startAt: "asc" } })
   ]);
-  const { text: greeting, extracted } = await runVoiceAiTurn({ business, lead: updatedLead, messages: initMessages, slots });
+  const { text: greeting, extracted } = await runVoiceAiTurn({ business, lead: updatedLead, messages: initMessages, slots, appointments });
   await prisma.message.create({
     data: { leadId: updatedLead.id, direction: "outbound", channel: "voice", body: greeting }
   });
@@ -600,12 +646,13 @@ router.post(
 
     let aiReply, done, extracted, bookedSlotIndex, voiceSlots;
     try {
-      const [messages, slots] = await Promise.all([
+      const [messages, slots, appointments] = await Promise.all([
         prisma.message.findMany({ where: { leadId: lead.id }, orderBy: { createdAt: "asc" } }),
-        getAvailableSlots(business.id)
+        getAvailableSlots(business.id),
+        prisma.appointment.findMany({ where: { leadId: lead.id, status: "booked" }, orderBy: { startAt: "asc" } })
       ]);
       voiceSlots = slots;
-      ({ text: aiReply, done, extracted, bookedSlotIndex } = await runVoiceAiTurn({ business, lead, messages, slots }));
+      ({ text: aiReply, done, extracted, bookedSlotIndex } = await runVoiceAiTurn({ business, lead, messages, slots, appointments }));
     } catch (err) {
       console.error("[voice-gather] AI error:", err.message);
       const retryMsg = "Sorry, I didn't quite catch that — could you say that again?";

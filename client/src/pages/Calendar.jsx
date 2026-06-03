@@ -23,29 +23,42 @@ function fmtTime(iso) {
   return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
 }
 
-function AppointmentCard({ appt }) {
+function AppointmentCard({ appt, onUpdate }) {
   const urg = URGENCY[appt.lead?.priority] || URGENCY.normal;
+  const [updating, setUpdating] = useState(null);
+
+  async function updateStatus(status) {
+    setUpdating(status);
+    try {
+      await api(`/api/appointments/${appt.id}`, { method: "PATCH", body: { status } });
+      onUpdate?.();
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setUpdating(null);
+    }
+  }
 
   return (
-    <Link to={`/leads/${appt.leadId}`} style={{ display: "block", textDecoration: "none", color: "inherit", marginBottom: 10 }}>
-      <div style={{ border: `1px solid ${urg.border}`, background: urg.bg, borderRadius: 10, padding: "0.85rem 1rem" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <Clock size={13} style={{ color: "#6b7280" }} />
-            <span style={{ fontWeight: 700, fontSize: "0.88rem" }}>
-              {fmtTime(appt.startAt)} – {fmtTime(appt.endAt)}
-            </span>
-          </div>
-          <div style={{ display: "flex", gap: 6 }}>
-            <span style={{ fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: urg.text, background: "white", border: `1px solid ${urg.border}`, padding: "1px 8px", borderRadius: 99 }}>
-              {urg.label}
-            </span>
-            <span style={{ fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: STATUS_COLOR[appt.status] || "#6b7280" }}>
-              {appt.status}
-            </span>
-          </div>
+    <div style={{ border: `1px solid ${urg.border}`, background: urg.bg, borderRadius: 10, padding: "0.85rem 1rem", marginBottom: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <Clock size={13} style={{ color: "#6b7280" }} />
+          <span style={{ fontWeight: 700, fontSize: "0.88rem" }}>
+            {fmtTime(appt.startAt)} – {fmtTime(appt.endAt)}
+          </span>
         </div>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <span style={{ fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: urg.text, background: "white", border: `1px solid ${urg.border}`, padding: "1px 8px", borderRadius: 99 }}>
+            {urg.label}
+          </span>
+          <span style={{ fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: STATUS_COLOR[appt.status] || "#6b7280" }}>
+            {appt.status}
+          </span>
+        </div>
+      </div>
 
+      <Link to={`/leads/${appt.leadId}`} style={{ textDecoration: "none", color: "inherit" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 3 }}>
           <User size={12} style={{ color: "#6b7280", flexShrink: 0 }} />
           <span style={{ fontWeight: 600, fontSize: "0.875rem" }}>
@@ -83,7 +96,7 @@ function AppointmentCard({ appt }) {
 
         {appt.lead?.urgency && (
           <div style={{ fontSize: "0.82rem", color: "#374151", marginBottom: 2 }}>
-            <strong>Urgency note:</strong> {appt.lead.urgency}
+            <strong>Urgency:</strong> {appt.lead.urgency}
           </div>
         )}
 
@@ -98,8 +111,27 @@ function AppointmentCard({ appt }) {
             <strong>Notes:</strong> {appt.notes}
           </div>
         )}
-      </div>
-    </Link>
+      </Link>
+
+      {appt.status === "booked" && (
+        <div style={{ display: "flex", gap: 6, marginTop: 10, borderTop: "1px solid rgba(0,0,0,0.07)", paddingTop: 8 }}>
+          <button
+            onClick={() => updateStatus("completed")}
+            disabled={!!updating}
+            style={{ flex: 1, padding: "5px 0", fontSize: "0.76rem", fontWeight: 700, background: "#dcfce7", color: "#15803d", border: "1px solid #bbf7d0", borderRadius: 7, cursor: "pointer", opacity: updating ? 0.6 : 1 }}
+          >
+            {updating === "completed" ? "Marking…" : "Mark complete"}
+          </button>
+          <button
+            onClick={() => updateStatus("cancelled")}
+            disabled={!!updating}
+            style={{ flex: 1, padding: "5px 0", fontSize: "0.76rem", fontWeight: 700, background: "#fee2e2", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: 7, cursor: "pointer", opacity: updating ? 0.6 : 1 }}
+          >
+            {updating === "cancelled" ? "Cancelling…" : "Cancel"}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -121,16 +153,19 @@ export default function CalendarPage() {
   const [selected, setSelected] = useState(new Date());
   const [loading, setLoading] = useState(() => !getCache("appointments"));
 
-  useEffect(() => {
-    Promise.all([
+  async function loadAppointments() {
+    const [apptData, bizData] = await Promise.all([
       api("/api/appointments"),
       api("/api/business/settings")
-    ]).then(([apptData, bizData]) => {
-      const appts = apptData.appointments || [];
-      const avail = bizData.business?.availability || [];
-      setAppointments(appts); setCache("appointments", appts);
-      setAvailability(avail); setCache("availability", avail);
-    }).finally(() => setLoading(false));
+    ]);
+    const appts = apptData.appointments || [];
+    const avail = bizData.business?.availability || [];
+    setAppointments(appts); setCache("appointments", appts);
+    setAvailability(avail); setCache("availability", avail);
+  }
+
+  useEffect(() => {
+    loadAppointments().finally(() => setLoading(false));
   }, []);
 
   const today = new Date();
@@ -190,7 +225,7 @@ export default function CalendarPage() {
               {todayAppts.length} appointment{todayAppts.length !== 1 ? "s" : ""}
             </span>
           </h2>
-          {todayAppts.map((a) => <AppointmentCard key={a.id} appt={a} />)}
+          {todayAppts.map((a) => <AppointmentCard key={a.id} appt={a} onUpdate={loadAppointments} />)}
         </div>
       )}
 
@@ -273,7 +308,7 @@ export default function CalendarPage() {
             {selectedAppts.length === 0 ? (
               <p style={{ color: "#9ca3af", fontSize: "0.875rem", margin: 0 }}>No appointments on this day.</p>
             ) : (
-              selectedAppts.map((a) => <AppointmentCard key={a.id} appt={a} />)
+              selectedAppts.map((a) => <AppointmentCard key={a.id} appt={a} onUpdate={loadAppointments} />)
             )}
           </div>
         </div>

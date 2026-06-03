@@ -70,7 +70,7 @@ router.post(
     });
 
     const message = await prisma.message.create({
-      data: { leadId: lead.id, direction: "outbound", channel: "sms", body, twilioSid: result.sid }
+      data: { leadId: lead.id, direction: "outbound", channel: "sms", body, twilioSid: result?.sid }
     });
     // Sending a manual reply means the contractor is handling this thread — pause the AI.
     await prisma.lead.update({ where: { id: lead.id }, data: { lastMessage: body, status: "texting", handoffMode: "human" } });
