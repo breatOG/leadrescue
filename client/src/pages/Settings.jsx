@@ -191,8 +191,16 @@ function fmt(e164) {
   return e164;
 }
 
-function TwilioPhonePanel({ currentNumber }) {
+function TwilioPhonePanel({ currentNumber, onNumberAssigned }) {
+  const plan = (getUser()?.subscriptionPlan || "starter").toLowerCase();
+  const isPremium = ["pro", "scale"].includes(plan);
+
   const [syncing, setSyncing] = useState(false);
+  const [changing, setChanging] = useState(false); // show picker for existing premium users
+  const [zip, setZip] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [results, setResults] = useState(null);
+  const [selecting, setSelecting] = useState(null);
   const [msg, setMsg] = useState("");
 
   async function resync() {
@@ -202,6 +210,78 @@ function TwilioPhonePanel({ currentNumber }) {
       setMsg("Webhooks re-synced.");
     } catch (err) { setMsg(err.message); }
     finally { setSyncing(false); }
+  }
+
+  async function searchZip(e) {
+    e.preventDefault(); setMsg(""); setResults(null);
+    if (!/^\d{5}$/.test(zip)) { setMsg("Enter a 5-digit ZIP code."); return; }
+    setSearching(true);
+    try {
+      const data = await api(`/api/business/numbers-by-zip?zip=${zip}`);
+      setResults(data.numbers);
+      if (!data.numbers?.length) setMsg(data.hint || "No numbers available near that ZIP. Try a nearby one.");
+    } catch (err) { setMsg(err.message); }
+    finally { setSearching(false); }
+  }
+
+  async function selectNumber(phoneNumber) {
+    setSelecting(phoneNumber); setMsg("");
+    try {
+      const data = await api("/api/business/select-number", { method: "POST", body: { phoneNumber } });
+      onNumberAssigned(data.phoneNumber);
+      setResults(null); setZip(""); setChanging(false);
+      setMsg(`${fmt(data.phoneNumber)} is now your LeadRescue number.`);
+    } catch (err) { setMsg(err.message); }
+    finally { setSelecting(null); }
+  }
+
+  // The ZIP picker UI — shared between "no number yet" and "change number" states
+  function ZipPicker() {
+    return (
+      <div style={{ marginTop: 14 }}>
+        <p style={{ fontSize: "0.84rem", color: "#374151", margin: "0 0 12px" }}>
+          Enter a ZIP code near your business to see available local numbers.
+        </p>
+        <form onSubmit={searchZip} style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          <input
+            value={zip}
+            onChange={(e) => setZip(e.target.value.replace(/\D/g, "").slice(0, 5))}
+            placeholder="ZIP code (e.g. 46201)"
+            maxLength={5}
+            style={{ width: 180, padding: "0.5rem 0.75rem", border: "1px solid #d1d5db", borderRadius: 8, fontSize: "0.9rem" }}
+          />
+          <button className="button" type="submit" disabled={searching} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            {searching ? "Searching…" : "Search"}
+          </button>
+          {changing && (
+            <button type="button" className="ghost" onClick={() => { setChanging(false); setResults(null); setZip(""); setMsg(""); }}>
+              Cancel
+            </button>
+          )}
+        </form>
+
+        {results && results.length > 0 && (
+          <div style={{ border: "1px solid #e5e7eb", borderRadius: 10, overflow: "hidden" }}>
+            {results.map((n) => (
+              <div key={n.phoneNumber} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 14px", borderBottom: "1px solid #f1f5f9" }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: "0.95rem" }}>{fmt(n.phoneNumber)}</div>
+                  {n.locality && <div style={{ fontSize: "0.76rem", color: "#9ca3af" }}>{n.locality}, {n.region}</div>}
+                </div>
+                <button
+                  className="button"
+                  onClick={() => selectNumber(n.phoneNumber)}
+                  disabled={!!selecting}
+                  style={{ fontSize: "0.8rem", padding: "0.35rem 0.9rem" }}
+                >
+                  {selecting === n.phoneNumber ? "Selecting…" : "Choose this number"}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -217,24 +297,41 @@ function TwilioPhonePanel({ currentNumber }) {
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: "1.35rem", letterSpacing: "0.01em", color: "#0f172a" }}>{fmt(currentNumber)}</div>
               <div style={{ fontSize: "0.78rem", color: "#16a34a", marginTop: 3 }}>
-                This is the number customers call and text. It shows on their caller ID when you call them back.
+                Customers call and text this number. It also shows as your caller ID when you call them.
               </div>
             </div>
-            <button className="ghost small" onClick={resync} disabled={syncing} style={{ fontSize: "0.76rem", display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap", flexShrink: 0 }}>
-              <RefreshCw size={11} />{syncing ? "Syncing…" : "Re-sync"}
-            </button>
+            <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+              <button className="ghost small" onClick={resync} disabled={syncing} style={{ fontSize: "0.76rem", display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
+                <RefreshCw size={11} />{syncing ? "Syncing…" : "Re-sync"}
+              </button>
+              {isPremium && !changing && (
+                <button className="ghost small" onClick={() => { setChanging(true); setMsg(""); }} style={{ fontSize: "0.76rem", whiteSpace: "nowrap" }}>
+                  Change number
+                </button>
+              )}
+            </div>
           </div>
-          <p style={{ margin: "10px 0 0", fontSize: "0.78rem", color: "#94a3b8", lineHeight: 1.5 }}>
-            Your number is assigned automatically and stays with your subscription. If you cancel, the number is held in reserve for 30 days before being reassigned.
+          <p style={{ margin: "8px 0 0", fontSize: "0.77rem", color: "#94a3b8", lineHeight: 1.5 }}>
+            {isPremium
+              ? "Pro/Scale: you can change your number at any time. Your current number goes back into the pool when you do."
+              : "Starter: your number is assigned from the available pool and stays with your subscription."}
           </p>
+          {isPremium && changing && <ZipPicker />}
+        </>
+      ) : isPremium ? (
+        <>
+          <div style={{ padding: "0.85rem 1rem", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, fontSize: "0.84rem", color: "#1e40af", marginBottom: 4 }}>
+            <strong>Choose your local number.</strong> Search by ZIP code and pick any available number near your business.
+          </div>
+          <ZipPicker />
         </>
       ) : (
         <div style={{ padding: "1rem 1.1rem", background: "#f8fafc", border: "1px solid var(--line)", borderRadius: 10, fontSize: "0.84rem", color: "#64748b" }}>
-          Your LeadRescue phone number will be assigned automatically when you activate a subscription. It will be a local number matching your area code.
+          Your LeadRescue number is being assigned. It will appear here shortly — it will be a local number near your area code.
         </div>
       )}
 
-      {msg && <p style={{ margin: "8px 0 0", fontSize: "0.8rem", color: msg.includes("re-synced") ? "#16a34a" : "#ef4444" }}>{msg}</p>}
+      {msg && <p style={{ margin: "10px 0 0", fontSize: "0.8rem", color: msg.includes("re-synced") || msg.includes("now your") ? "#16a34a" : "#ef4444", fontWeight: 600 }}>{msg}</p>}
     </div>
   );
 }
@@ -685,7 +782,7 @@ export default function Settings() {
         </div>
       </div>
       <SubscriptionPanel />
-      <TwilioPhonePanel currentNumber={form.twilioPhoneNumber} />
+      <TwilioPhonePanel currentNumber={form.twilioPhoneNumber} onNumberAssigned={(num) => setField("twilioPhoneNumber", num)} />
       <SmsStatusPanel />
       <form className="panel settings-form" onSubmit={submit}>
         {/* Business info */}

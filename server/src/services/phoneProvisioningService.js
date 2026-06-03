@@ -102,6 +102,48 @@ export async function provisionNumberForBusiness({ user, business, baseUrl }) {
   return purchased.phoneNumber;
 }
 
+// Search available numbers near a ZIP code (used by Pro/Scale number picker).
+export async function searchNumbersByZip(zip, limit = 6) {
+  const client = getTwilioClient();
+  if (!client) return [];
+  const results = await client.availablePhoneNumbers("US").local.list({
+    inPostalCode: zip,
+    smsEnabled: true,
+    voiceEnabled: true,
+    limit
+  });
+  return results.map((n) => ({
+    phoneNumber: n.phoneNumber,
+    friendlyName: n.friendlyName,
+    locality: n.locality,
+    region: n.region
+  }));
+}
+
+// Purchase a specific number the Pro/Scale user chose and wire up webhooks.
+export async function purchaseSelectedNumber({ phoneNumber, business, baseUrl }) {
+  const client = getTwilioClient();
+  if (!client) throw new Error("Twilio is not configured.");
+
+  const base = baseUrl.replace(/\/$/, "");
+  const businessName = business.name || business.id;
+
+  const purchased = await client.incomingPhoneNumbers.create({
+    phoneNumber,
+    friendlyName: `LeadRescue – ${businessName}`,
+    smsUrl: `${base}/webhooks/twilio/sms`,
+    smsMethod: "POST",
+    voiceUrl: `${base}/webhooks/twilio/voice`,
+    voiceMethod: "POST",
+    statusCallback: `${base}/webhooks/twilio/call-status`,
+    statusCallbackMethod: "POST"
+  });
+
+  await prisma.business.update({ where: { id: business.id }, data: { twilioPhoneNumber: purchased.phoneNumber } });
+  console.log(`[provision] Pro/Scale selected ${purchased.phoneNumber} for business ${business.id}`);
+  return purchased.phoneNumber;
+}
+
 // Move a business's number to the pool when their subscription ends.
 // Disconnects webhooks so the idle number doesn't route calls anywhere.
 export async function poolNumberFromUser(userId) {

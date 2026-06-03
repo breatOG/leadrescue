@@ -3,6 +3,7 @@ import asyncHandler from "express-async-handler";
 import twilio from "twilio";
 import { prisma } from "../prisma/client.js";
 import { requireAuth, invalidateAuthCache } from "../middleware/auth.js";
+import { searchNumbersByZip, purchaseSelectedNumber, poolNumberFromUser } from "../services/phoneProvisioningService.js";
 
 function tokenFrom(req) {
   const header = req.headers.authorization || "";
@@ -101,6 +102,49 @@ router.put(
     invalidateAuthCache(tokenFrom(req));
 
     res.json({ business });
+  })
+);
+
+// GET /api/business/numbers-by-zip?zip=46201 — Pro/Scale: search available numbers near a ZIP code
+router.get(
+  "/numbers-by-zip",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const plan = (req.user.subscriptionPlan || "").toLowerCase();
+    if (!["pro", "scale"].includes(plan)) {
+      return res.status(403).json({ error: "Number selection is available on Pro and Scale plans." });
+    }
+    const { zip } = req.query;
+    if (!/^\d{5}$/.test(zip)) return res.status(400).json({ error: "Enter a valid 5-digit ZIP code." });
+    const numbers = await searchNumbersByZip(zip, 6);
+    if (!numbers.length) return res.json({ numbers: [], hint: "No numbers available near that ZIP. Try a nearby ZIP code." });
+    res.json({ numbers });
+  })
+);
+
+// POST /api/business/select-number — Pro/Scale: purchase and assign a chosen number
+router.post(
+  "/select-number",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const plan = (req.user.subscriptionPlan || "").toLowerCase();
+    if (!["pro", "scale"].includes(plan)) {
+      return res.status(403).json({ error: "Number selection is available on Pro and Scale plans." });
+    }
+    const { phoneNumber } = req.body;
+    if (!phoneNumber) return res.status(400).json({ error: "phoneNumber is required." });
+
+    const baseUrl = (process.env.APP_BASE_URL || "").replace(/\/$/, "");
+    if (!baseUrl) return res.status(503).json({ error: "APP_BASE_URL is not configured." });
+
+    // If they already have a number, pool the old one before assigning the new one
+    if (req.business.twilioPhoneNumber) {
+      await poolNumberFromUser(req.user.id).catch((e) => console.error("[select-number] pool old:", e.message));
+    }
+
+    const assigned = await purchaseSelectedNumber({ phoneNumber, business: req.business, baseUrl });
+    invalidateAuthCache(tokenFrom(req));
+    res.json({ phoneNumber: assigned });
   })
 );
 

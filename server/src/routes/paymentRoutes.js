@@ -35,7 +35,10 @@ function publicUser(user) {
   return safe;
 }
 
-async function autoProvisionNumber(userId) {
+async function autoProvisionNumber(userId, plan) {
+  // Pro and Scale subscribers choose their own number via the ZIP picker in Settings.
+  // Only Starter gets one assigned automatically from the pool.
+  if ((plan || "").toLowerCase() !== "starter") return;
   const baseUrl = (process.env.APP_BASE_URL || "").replace(/\/$/, "");
   if (!baseUrl) return;
   try {
@@ -108,7 +111,7 @@ router.post(
       }
     });
 
-    autoProvisionNumber(req.user.id); // fire-and-forget
+    autoProvisionNumber(req.user.id, plan || req.user.subscriptionPlan); // Starter only
     res.json({ user: publicUser(user) });
   })
 );
@@ -270,7 +273,7 @@ router.post(
             }
           });
           console.log(`[stripe] Subscription activated for user ${userId} (${plan})`);
-          autoProvisionNumber(userId); // fire-and-forget — don't block the webhook response
+          autoProvisionNumber(userId, plan); // Starter only — Pro/Scale pick their own
         }
         break;
       }
