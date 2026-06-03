@@ -1,4 +1,5 @@
 import WebSocket from "ws";
+import twilio from "twilio";
 import { prisma } from "../prisma/client.js";
 import { analyzeCallTranscript, runAiLeadAgent } from "./aiLeadAgent.js";
 import { notifyContractor } from "./notificationService.js";
@@ -272,6 +273,21 @@ function appendTranscriptLine(transcript, speaker, text) {
   console.log(`[voice-ai] transcript ${speaker}: ${body}`);
 }
 
+function callerClearlyEnded(text) {
+  return /\b(that'?s all|that is all|i'?m good|im good|no thanks|no thank you|nothing else|that'?s it|sounds good|thank you bye|thanks bye|bye|goodbye|have a good one|have a great day)\b/i.test(String(text || ""));
+}
+
+function assistantSaidGoodbye(text) {
+  return /\b(goodbye|bye|have a great day|have a good day|have a good one|we'?ll be in touch|thanks for calling)\b/i.test(String(text || ""));
+}
+
+function getTwilioRestClient() {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  if (!accountSid || !authToken) return null;
+  return twilio(accountSid, authToken);
+}
+
 function voiceMemoryEnabled() {
   return process.env.ENABLE_VOICE_MEMORY === "true";
 }
@@ -398,6 +414,7 @@ export function handleTwilioVoiceStream(twilioWs) {
   let aiSpeaking = false;
   let callerAudioAllowedAt = 0;
   let streamSid = null;
+  let callSid = null;
   let sessionReady = false;
   let leadId = null;
   let businessId = null;
@@ -410,12 +427,62 @@ export function handleTwilioVoiceStream(twilioWs) {
   let twilioStartReceived = false;
   let openAiConnected = false;
   let sessionInitialized = false;
+  let callerAskedToEnd = false;
+  let goodbyePromptSent = false;
+  let goodbyeSpoken = false;
+  let endCallRequested = false;
+  let endCallTimer = null;
 
   function maybeInitSession() {
     if (!twilioStartReceived || !openAiConnected || sessionInitialized) return;
     sessionInitialized = true;
     updateRealtimeSession(openAiWs, callerMemory);
     addCallContext(openAiWs, { businessName });
+  }
+
+  async function completeCall(reason = "requested") {
+    if (endCallRequested) return;
+    endCallRequested = true;
+    if (endCallTimer) clearTimeout(endCallTimer);
+    console.log(`[voice-ai] Ending call reason=${reason} callSid=${callSid || "(unknown)"}`);
+
+    const client = getTwilioRestClient();
+    if (client && callSid) {
+      try {
+        await client.calls(callSid).update({ status: "completed" });
+      } catch (error) {
+        console.error("[voice-ai] Twilio call completion failed:", error.message);
+      }
+    }
+
+    if (twilioWs.readyState === WebSocket.OPEN) {
+      twilioWs.close();
+    }
+  }
+
+  function requestModelGoodbye() {
+    if (!callerAskedToEnd || goodbyePromptSent || endCallRequested || openAiWs.readyState !== WebSocket.OPEN) return;
+    goodbyePromptSent = true;
+    sendJson(openAiWs, {
+      type: "conversation.item.create",
+      item: {
+        type: "message",
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: "The caller clearly indicated they are done. Say one brief warm goodbye now, then call the end_call function immediately."
+          }
+        ]
+      }
+    });
+    sendJson(openAiWs, { type: "response.create" });
+  }
+
+  function scheduleEndCall(reason = "model_end_call") {
+    if (endCallRequested) return;
+    if (endCallTimer) clearTimeout(endCallTimer);
+    endCallTimer = setTimeout(() => completeCall(reason), aiSpeaking ? 2500 : 800);
   }
   const model = process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-mini";
   const openAiWs = new WebSocket(`wss://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`, {
@@ -462,6 +529,10 @@ export function handleTwilioVoiceStream(twilioWs) {
 
     if (event.type === "conversation.item.input_audio_transcription.completed") {
       appendTranscriptLine(transcript, "caller", event.transcript);
+      if (callerClearlyEnded(event.transcript)) {
+        callerAskedToEnd = true;
+        requestModelGoodbye();
+      }
     }
 
     if (event.type === "response.audio_transcript.delta" || event.type === "response.output_audio_transcript.delta") {
@@ -472,6 +543,10 @@ export function handleTwilioVoiceStream(twilioWs) {
       const finalText = event.transcript || currentAssistantTranscript;
       appendTranscriptLine(transcript, "assistant", finalText);
       currentAssistantTranscript = "";
+      if (callerAskedToEnd && assistantSaidGoodbye(finalText)) {
+        goodbyeSpoken = true;
+        scheduleEndCall("goodbye_detected");
+      }
     }
 
     if (isAudioDeltaEvent(event) && streamSid) {
@@ -493,13 +568,21 @@ export function handleTwilioVoiceStream(twilioWs) {
       aiSpeaking = false;
       // Give 1.5s for audio to finish playing on caller's phone before re-opening mic
       callerAudioAllowedAt = Date.now() + 1500;
+      if (goodbyeSpoken || endCallTimer) {
+        scheduleEndCall("audio_done_after_goodbye");
+      }
     }
 
-    if (event.type === "response.output_item.done" && event.item?.type === "function_call" && event.item?.name === "end_call") {
-      console.log("[voice-ai] AI called end_call — hanging up after audio finishes.");
-      setTimeout(() => {
-        if (twilioWs.readyState === WebSocket.OPEN) twilioWs.close();
-      }, 3000);
+    const outputFunctionName = event.response?.output?.find?.((item) => item?.name)?.name;
+    const functionName = event.item?.name || event.name || outputFunctionName;
+    const isEndCall =
+      functionName === "end_call" ||
+      (event.type?.includes("function_call") && event.name === "end_call") ||
+      (event.type === "response.output_item.done" && event.item?.type === "function_call" && event.item?.name === "end_call");
+
+    if (isEndCall) {
+      console.log("[voice-ai] AI called end_call.");
+      scheduleEndCall("model_end_call");
     }
 
     if (event.type === "error") {
@@ -527,6 +610,7 @@ export function handleTwilioVoiceStream(twilioWs) {
 
     if (event.event === "start") {
       streamSid = event.start?.streamSid || event.streamSid;
+      callSid = event.start?.callSid || event.callSid || callSid;
       leadId = event.start?.customParameters?.leadId || null;
       businessId = event.start?.customParameters?.businessId || null;
       businessName = event.start?.customParameters?.businessName || businessName;
