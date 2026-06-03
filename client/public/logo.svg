@@ -9,43 +9,43 @@
   <!-- Background -->
   <rect width="512" height="512" rx="88" fill="url(#bg)"/>
 
-  <!-- ── L LETTER ── -->
-  <!-- vertical bar -->
-  <rect x="66" y="92" width="74" height="322" rx="8" fill="white"/>
-  <!-- horizontal bar -->
-  <rect x="66" y="340" width="204" height="74" rx="8" fill="white"/>
+  <!-- ── L ── -->
+  <rect x="58" y="92" width="72" height="318" rx="8" fill="white"/>
+  <rect x="58" y="338" width="196" height="72" rx="8" fill="white"/>
 
-  <!-- ── R LETTER ── -->
-  <!-- vertical bar -->
-  <rect x="284" y="92" width="74" height="322" rx="8" fill="white"/>
-  <!-- bowl  (outer D minus inner cutout — same center, sharing the vertical-bar edge) -->
-  <!-- center=(358,190), outer rx=122 ry=98, inner rx=60 ry=46 -->
-  <path d="M 358 92 A 122 98 0 0 1 358 288 L 358 236 A 60 46 0 0 0 358 144 Z" fill="white"/>
-  <!-- diagonal leg -->
-  <line x1="368" y1="278" x2="454" y2="414" stroke="white" stroke-width="74" stroke-linecap="round"/>
+  <!-- ── R  vertical bar ── -->
+  <rect x="278" y="92" width="72" height="318" rx="8" fill="white"/>
 
-  <!-- ── SPEECH BUBBLE (upper-right, tail toward R) ── -->
-  <!-- Full closed path: rounded-rect body + downward tail -->
+  <!--
+    R bowl: donut D-shape using evenodd fill rule.
+    Both sub-paths trace the RIGHT half of their ellipse clockwise (sweep=1).
+    The even-odd rule makes the overlapping region transparent → hollow bowl.
+    Outer: center (350,189), rx=118, ry=97  → top (350,92)  bottom (350,286)
+    Inner: center (350,188), rx=60,  ry=44  → top (350,144) bottom (350,232)
+  -->
+  <path fill-rule="evenodd" fill="white" d="
+    M 350 92  A 118 97 0 0 1 350 286 Z
+    M 350 144 A 60  44 0 0 1 350 232 Z
+  "/>
+
+  <!-- R diagonal leg -->
+  <line x1="364" y1="276" x2="448" y2="410"
+        stroke="white" stroke-width="72" stroke-linecap="round"/>
+
+  <!-- ── Speech bubble (upper-right) ── -->
   <path d="
-    M 368 26
-    Q 350 26 350 44
-    L 350 142
-    Q 350 160 368 160
-    L 378 160
-    L 370 186
-    L 394 160
-    L 484 160
-    Q 502 160 502 142
-    L 502 44
-    Q 502 26 484 26
-    Z
-  " fill="none" stroke="#6de4d0" stroke-width="17" stroke-linejoin="round"/>
-  <!-- three dots -->
-  <circle cx="388" cy="94" r="13" fill="#6de4d0"/>
-  <circle cx="426" cy="94" r="13" fill="#6de4d0"/>
-  <circle cx="464" cy="94" r="13" fill="#6de4d0"/>
+    M 363 24 Q 345 24 345 42
+    L 345 140 Q 345 158 363 158
+    L 372 158 L 363 183 L 390 158
+    L 479 158 Q 497 158 497 140
+    L 497 42  Q 497 24  479 24 Z
+  " fill="none" stroke="#6de4d0" stroke-width="18" stroke-linejoin="round"/>
 
-  <!-- ── SWOOSH arc below letters ── -->
-  <path d="M 48 428 Q 256 490 460 400"
-    fill="none" stroke="#6de4d0" stroke-width="17" stroke-linecap="round"/>
+  <circle cx="385" cy="93"  r="13" fill="#6de4d0"/>
+  <circle cx="421" cy="93"  r="13" fill="#6de4d0"/>
+  <circle cx="457" cy="93"  r="13" fill="#6de4d0"/>
+
+  <!-- ── Swoosh ── -->
+  <path d="M 46 428 Q 256 488 458 400"
+        fill="none" stroke="#6de4d0" stroke-width="18" stroke-linecap="round"/>
 </svg>
