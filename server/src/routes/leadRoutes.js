@@ -1,5 +1,6 @@
 import express from "express";
 import asyncHandler from "express-async-handler";
+import twilio from "twilio";
 import { prisma } from "../prisma/client.js";
 import { requireAuth } from "../middleware/auth.js";
 import { sendSms } from "../services/twilioService.js";
@@ -88,6 +89,59 @@ router.post(
       data: { handoffMode: mode }
     });
     res.json({ lead });
+  })
+);
+
+// POST /api/leads/:id/call — click-to-call: Twilio calls the owner first, then bridges to customer.
+// The customer always sees the business Twilio number as caller ID.
+router.post(
+  "/:id/call",
+  asyncHandler(async (req, res) => {
+    const lead = await prisma.lead.findFirst({ where: { id: req.params.id, businessId: req.business.id } });
+    if (!lead) return res.status(404).json({ error: "Lead not found" });
+
+    const ownerPhone = (
+      req.business.ownerNotificationPhone ||
+      req.business.businessPhoneNumber ||
+      ""
+    ).trim();
+    if (!ownerPhone) {
+      return res.status(400).json({ error: "Add your mobile number under Call handling in Settings so we know where to ring you." });
+    }
+
+    const twilioFrom = req.business.twilioPhoneNumber || process.env.TWILIO_PHONE_NUMBER;
+    if (!twilioFrom) {
+      return res.status(400).json({ error: "No Twilio number configured for this business." });
+    }
+
+    const sid = process.env.TWILIO_ACCOUNT_SID;
+    const token = process.env.TWILIO_AUTH_TOKEN;
+    if (!sid || !token) {
+      return res.status(503).json({ error: "Twilio credentials not configured." });
+    }
+
+    const baseUrl = (process.env.APP_BASE_URL || "").replace(/\/$/, "");
+    const client = twilio(sid, token);
+
+    // Step 1: Twilio calls the owner's phone.
+    // Step 2: When owner picks up, TwiML dials the customer — customer sees Twilio number.
+    const connectUrl = `${baseUrl}/webhooks/twilio/outbound-connect?to=${encodeURIComponent(lead.customerPhone)}&from=${encodeURIComponent(twilioFrom)}&leadId=${lead.id}`;
+
+    const call = await client.calls.create({
+      to: ownerPhone,
+      from: twilioFrom,
+      url: connectUrl,
+      method: "POST",
+      statusCallback: `${baseUrl}/webhooks/twilio/call-status`,
+      statusCallbackMethod: "POST"
+    });
+
+    await prisma.message.create({
+      data: { leadId: lead.id, direction: "outbound", channel: "voice", body: `[Outbound call initiated to ${lead.customerPhone}]` }
+    });
+
+    console.log(`[click-to-call] sid=${call.sid} owner=${ownerPhone} customer=${lead.customerPhone}`);
+    res.json({ ok: true, callSid: call.sid });
   })
 );
 

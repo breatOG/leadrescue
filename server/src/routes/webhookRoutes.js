@@ -614,6 +614,35 @@ router.post(
   })
 );
 
+// Fires when the owner picks up a click-to-call — bridges them to the customer.
+// The customer's caller ID shows the Twilio number (from= param).
+router.post(
+  "/twilio/outbound-connect",
+  asyncHandler(async (req, res) => {
+    const { to, from, leadId } = req.query;
+    if (!to || !from) {
+      return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Google.en-US-Neural2-F">Sorry, we could not connect your call. Please try again.</Say>
+  <Hangup/>
+</Response>`);
+    }
+
+    // Update lead so team knows a call is in progress
+    if (leadId) {
+      await prisma.lead.update({ where: { id: leadId }, data: { lastMessage: "[Outbound call in progress]" } }).catch(() => {});
+    }
+
+    return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Google.en-US-Neural2-F">Connecting you now.</Say>
+  <Dial callerId="${esc(from)}" timeout="30">
+    <Number>${esc(to)}</Number>
+  </Dial>
+</Response>`);
+  })
+);
+
 router.post(
   "/twilio/call-status",
   asyncHandler(async (req, res) => {

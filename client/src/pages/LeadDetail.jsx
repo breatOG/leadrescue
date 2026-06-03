@@ -29,6 +29,8 @@ export default function LeadDetail() {
   const [showBooking, setShowBooking] = useState(false);
   const [bookingSlot, setBookingSlot] = useState("");
   const [booking, setBooking] = useState(false);
+  const [calling, setCalling] = useState(false);
+  const [callMsg, setCallMsg] = useState("");
 
   async function loadLead() {
     const data = await api(`/api/leads/${id}`);
@@ -79,6 +81,18 @@ export default function LeadDetail() {
       /* ignore */
     } finally {
       setDrafting(false);
+    }
+  }
+
+  async function callCustomer() {
+    setCalling(true); setCallMsg("");
+    try {
+      await api(`/api/leads/${id}/call`, { method: "POST" });
+      setCallMsg("Your phone will ring in a moment — pick up and you'll be connected to the customer.");
+    } catch (err) {
+      setCallMsg(err.message);
+    } finally {
+      setCalling(false);
     }
   }
 
@@ -214,18 +228,33 @@ export default function LeadDetail() {
       <section className="panel">
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 4 }}>
           <h2 style={{ margin: 0 }}>Conversation</h2>
-          {lead.handoffMode === "human" ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span className="badge" style={{ background: "#dcfce7", color: "#166534" }}>You're handling this</span>
-              <button className="ghost small" onClick={() => setHandoff("ai")}>Hand back to AI</button>
-            </div>
-          ) : (
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span className="badge" style={{ background: "#e6f4f1", color: "var(--accent-dark)" }}>AI is replying</span>
-              <button className="ghost small" onClick={() => setHandoff("human")}>Take over</button>
-            </div>
-          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <button
+              className="ghost small"
+              onClick={callCustomer}
+              disabled={calling}
+              style={{ display: "flex", alignItems: "center", gap: 4, fontSize: "0.78rem", color: "#2563eb", borderColor: "#bfdbfe" }}
+            >
+              📞 {calling ? "Calling…" : "Call customer"}
+            </button>
+            {lead.handoffMode === "human" ? (
+              <>
+                <span className="badge" style={{ background: "#dcfce7", color: "#166534" }}>You're handling this</span>
+                <button className="ghost small" onClick={() => setHandoff("ai")}>Hand back to AI</button>
+              </>
+            ) : (
+              <>
+                <span className="badge" style={{ background: "#e6f4f1", color: "var(--accent-dark)" }}>AI is replying</span>
+                <button className="ghost small" onClick={() => setHandoff("human")}>Take over</button>
+              </>
+            )}
+          </div>
         </div>
+        {callMsg && (
+          <p style={{ margin: "0 0 8px", fontSize: "0.8rem", color: callMsg.startsWith("Your phone") ? "#16a34a" : "#ef4444", fontWeight: 600 }}>
+            {callMsg}
+          </p>
+        )}
         <div className="message-thread">
           {visibleMessages.map((message) => (
             <div className={`message ${message.direction}`} key={message.id}>
