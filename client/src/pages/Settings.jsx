@@ -940,7 +940,23 @@ export default function Settings() {
           </label>
         )}
 
-        {/* Watch Mode + SMS Choice Mode — Pro/Scale only */}
+        {/* SMS approval — available to all plans */}
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 10, marginTop: 14, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={Boolean(form.smsChoiceMode)}
+            onChange={(e) => setField("smsChoiceMode", e.target.checked)}
+            style={{ width: 16, height: 16, marginTop: 2, accentColor: "var(--accent)", flexShrink: 0 }}
+          />
+          <span style={{ fontSize: "0.85rem", color: "#374151", fontWeight: 600 }}>
+            Approve AI responses to texts
+            <span style={{ display: "block", fontSize: "0.78rem", color: "#94a3b8", fontWeight: 400, marginTop: 2 }}>
+              When a customer texts, you get a message on your phone showing what they said. Reply <strong>AI</strong> to let the assistant respond, or reply with your own message to send it directly. Turn off to let the AI respond automatically.
+            </span>
+          </span>
+        </label>
+
+        {/* Watch Mode — Pro/Scale only */}
         {["pro","scale"].includes((getUser()?.subscriptionPlan || "").toLowerCase()) && (
           <>
             <div style={{ height: 1, background: "var(--line)", margin: "16px 0 12px" }} />
@@ -948,9 +964,7 @@ export default function Settings() {
               <h2 style={{ margin: "0 0 4px", fontSize: "1rem" }}>AI Automation (Pro/Scale)</h2>
               <p style={{ margin: 0, fontSize: "0.8rem", color: "#94a3b8" }}>Advanced features that keep the AI in the loop even when you handle things manually.</p>
             </div>
-
-            {/* Watch Mode */}
-            <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", marginBottom: 12 }}>
+            <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
               <input
                 type="checkbox"
                 checked={Boolean(form.watchMode)}
@@ -961,22 +975,6 @@ export default function Settings() {
                 Watch Mode — record calls you answer
                 <span style={{ display: "block", fontSize: "0.78rem", color: "#94a3b8", fontWeight: 400, marginTop: 2 }}>
                   When you pick up a customer call, it gets recorded. After the call, the AI transcribes it, fills in the lead details, and books any appointment you agreed to — automatically.
-                </span>
-              </span>
-            </label>
-
-            {/* SMS Choice Mode */}
-            <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={Boolean(form.smsChoiceMode)}
-                onChange={(e) => setField("smsChoiceMode", e.target.checked)}
-                style={{ width: 16, height: 16, marginTop: 2, accentColor: "var(--accent)", flexShrink: 0 }}
-              />
-              <span style={{ fontSize: "0.85rem", color: "#374151", fontWeight: 600 }}>
-                SMS Choice Mode — decide who replies to each text
-                <span style={{ display: "block", fontSize: "0.78rem", color: "#94a3b8", fontWeight: 400, marginTop: 2 }}>
-                  When a customer texts, you get a notification on your phone: "Reply AI to let the assistant respond, or reply with your message to send it directly." No app needed — just reply from your regular texts.
                 </span>
               </span>
             </label>
