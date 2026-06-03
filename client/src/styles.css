@@ -572,6 +572,12 @@ button.button {
   filter: blur(6px);
 }
 
+.redacted-address {
+  display: inline-block;
+  filter: blur(6px);
+  user-select: none;
+}
+
 .table-wrap {
   overflow-x: auto;
 }

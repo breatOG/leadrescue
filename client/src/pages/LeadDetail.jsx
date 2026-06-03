@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import { api, getCache, setCache } from "../api/client.js";
 import { markLeadSeen } from "../utils/seenLeads.js";
 import { Badge } from "../components/Layout.jsx";
-import { PhoneText } from "../components/RedactedPhone.jsx";
+import { AddressText, DemoSafeText, LeadName, PhoneText, redactDemoText } from "../components/RedactedPhone.jsx";
 import { formatBusinessDateTime } from "../utils/dates.js";
 
 function AppointmentRow({ apt, onUpdate }) {
@@ -171,7 +171,7 @@ function summarizeSession(session, lead) {
     : inboundText
       ? inboundText.slice(0, 180)
       : "No customer message in this session.";
-  const summary = `${session.channelLabel} on ${session.dateRange}: ${coreSummary}`;
+  const summary = redactDemoText(`${session.channelLabel} on ${session.dateRange}: ${coreSummary}`);
 
   let nextStep = "Review this session and follow up if needed.";
   if (hasAppointment) nextStep = "Check the appointment details before replying.";
@@ -181,7 +181,7 @@ function summarizeSession(session, lead) {
 
   return {
     summary,
-    concerns: concerns.length ? [...new Set(concerns)] : ["No clear problem detected in this session."],
+    concerns: concerns.length ? [...new Set(concerns)].map(redactDemoText) : ["No clear problem detected in this session."],
     nextStep
   };
 }
@@ -339,7 +339,7 @@ export default function LeadDetail() {
         <div className="page-header compact">
           <div>
             <p className="eyebrow">{lead.source === "missed_call" ? "📞 Voice lead" : "💬 SMS lead"} · Lead detail</p>
-            <h1>{lead.customerName || <PhoneText>{lead.customerPhone}</PhoneText>}</h1>
+            <h1><LeadName lead={lead} /></h1>
           </div>
           <button className="ghost" onClick={closeLead}>Mark closed</button>
         </div>
@@ -352,13 +352,20 @@ export default function LeadDetail() {
 
         <h2>Customer info</h2>
         <div className="detail-fields">
-          <Field label="Name" value={lead.customerName} />
+          <div className="detail-field">
+            <span className="detail-label">Name</span>
+            <strong><LeadName lead={lead} fallback="Unknown customer" /></strong>
+          </div>
           <div className="detail-field">
             <span className="detail-label">Phone</span>
             <strong><PhoneText>{lead.customerPhone}</PhoneText></strong>
           </div>
-          <Field label="Address" value={lead.address} />
-          <Field label="ZIP code" value={lead.zipCode} />
+          {(lead.address || lead.zipCode) && (
+            <div className="detail-field">
+              <span className="detail-label">Address</span>
+              <strong><AddressText>{[lead.address, lead.zipCode].filter(Boolean).join(", ")}</AddressText></strong>
+            </div>
+          )}
         </div>
 
         <h2>Job details</h2>
@@ -519,7 +526,7 @@ export default function LeadDetail() {
                     <small>
                       {channelIcon(message.channel)} {message.direction === "inbound" ? "Customer" : "AI"} - {formatBusinessDateTime(message.createdAt, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                     </small>
-                    <p>{message.body}</p>
+                    <p><DemoSafeText>{message.body}</DemoSafeText></p>
                   </div>
                 ))}
               </div>

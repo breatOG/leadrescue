@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, ChevronLeft, ChevronRight, Clock, MapPin, Phone, User } from "lucide-react";
 import { api, getCache, setCache } from "../api/client.js";
-import { LeadName, PhoneText } from "../components/RedactedPhone.jsx";
+import { AddressText, LeadName, PhoneText } from "../components/RedactedPhone.jsx";
 import { businessDateKey, formatBusinessDate, formatBusinessDateTime, formatBusinessTime } from "../utils/dates.js";
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -143,9 +143,9 @@ function AppointmentCard({ appt, onUpdate }) {
         {(appt.lead?.address || appt.lead?.zipCode) && (
           <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 2 }}>
             <MapPin size={12} style={{ color: "#6b7280", flexShrink: 0 }} />
-            <span style={{ fontSize: "0.82rem", color: "#374151" }}>
+            <AddressText style={{ fontSize: "0.82rem", color: "#374151" }}>
               {[appt.lead.address, appt.lead.zipCode].filter(Boolean).join(", ")}
-            </span>
+            </AddressText>
           </div>
         )}
 
@@ -277,10 +277,6 @@ export default function CalendarPage() {
     .filter((a) => isSameDay(new Date(a.startAt), selected))
     .sort((a, b) => new Date(a.startAt) - new Date(b.startAt));
 
-  const todayAppts = visibleAppointments
-    .filter((a) => isSameDay(new Date(a.startAt), today))
-    .sort((a, b) => new Date(a.startAt) - new Date(b.startAt));
-
   const upcomingAppts = visibleAppointments
     .filter((a) => new Date(a.startAt) > today && a.status === "booked")
     .sort((a, b) => new Date(a.startAt) - new Date(b.startAt))
@@ -311,18 +307,6 @@ export default function CalendarPage() {
           <span>
             <strong>{aiApptCount} appointment{aiApptCount !== 1 ? "s" : ""} were scheduled automatically</strong> — LeadRescue booked these when customers confirmed a time via text or call. They show the <strong>AI scheduled</strong> tag so you always know what came in on its own.
           </span>
-        </div>
-      )}
-
-      {todayAppts.length > 0 && (
-        <div className="panel" style={{ marginBottom: 18 }}>
-          <h2 style={{ marginTop: 0, marginBottom: 14 }}>
-            Today — {formatBusinessDate(today, { weekday: "long", month: "long", day: "numeric" })}
-            <span style={{ marginLeft: 10, fontWeight: 400, fontSize: "0.85rem", color: "#6b7280" }}>
-              {todayAppts.length} appointment{todayAppts.length !== 1 ? "s" : ""}
-            </span>
-          </h2>
-          {todayAppts.map((a) => <AppointmentCard key={a.id} appt={a} onUpdate={loadAppointments} />)}
         </div>
       )}
 
