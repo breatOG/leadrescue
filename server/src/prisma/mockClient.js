@@ -370,6 +370,12 @@ export const mockPrisma = {
       return { count: before - db.authTokens.length };
     }
   },
+  pooledPhoneNumber: {
+    findFirst: async () => null,
+    create: async ({ data }) => ({ id: id("pool"), releasedAt: now(), ...data }),
+    upsert: async ({ create }) => ({ id: id("pool"), releasedAt: now(), ...create }),
+    delete: async () => ({})
+  },
   $transaction: async (arg) => {
     if (typeof arg === "function") return arg(mockPrisma);
     return Promise.all(arg);

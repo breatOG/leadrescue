@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { CheckCircle, MessageSquare, Phone, RefreshCw, Search, ShieldCheck, Zap } from "lucide-react";
+import { CheckCircle, MessageSquare, Phone, RefreshCw, ShieldCheck, Zap } from "lucide-react";
 import { api, getCache, setCache, getUser } from "../api/client.js";
 
 const PLAN_FEATURES = {
@@ -183,178 +183,58 @@ function SubscriptionPanel() {
   );
 }
 
-function TwilioPhonePanel({ currentNumber, onProvisioned }) {
-  const [tab, setTab] = useState("existing"); // "existing" | "new"
-  const [existingInput, setExistingInput] = useState("");
-  const [connecting, setConnecting] = useState(false);
-  const [areaCode, setAreaCode] = useState("");
-  const [searching, setSearching] = useState(false);
-  const [results, setResults] = useState(null);
-  const [provisioning, setProvisioning] = useState(null);
-  const [reconfiguring, setReconfiguring] = useState(false);
-  const [replacing, setReplacing] = useState(false);
-  const [success, setSuccess] = useState("");
-  const [error, setError] = useState("");
+// Formats E.164 → (317) 555-0100
+function fmt(e164) {
+  const d = (e164 || "").replace(/\D/g, "");
+  if (d.length === 11 && d[0] === "1") return `(${d.slice(1,4)}) ${d.slice(4,7)}-${d.slice(7)}`;
+  if (d.length === 10) return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
+  return e164;
+}
 
-  function clearMessages() { setError(""); setSuccess(""); }
+function TwilioPhonePanel({ currentNumber }) {
+  const [syncing, setSyncing] = useState(false);
+  const [msg, setMsg] = useState("");
 
-  async function connectExisting(e) {
-    e.preventDefault();
-    clearMessages();
-    if (!existingInput.trim()) { setError("Enter your Twilio phone number."); return; }
-    setConnecting(true);
-    try {
-      const data = await api("/api/business/connect-existing-number", { method: "POST", body: { phoneNumber: existingInput.trim(), replace: true } });
-      onProvisioned(data.phoneNumber);
-      setExistingInput(""); setReplacing(false);
-      setSuccess(`${data.phoneNumber} is connected. SMS and voice are now routed to your AI.`);
-    } catch (err) { setError(err.message); }
-    finally { setConnecting(false); }
-  }
-
-  async function search(e) {
-    e.preventDefault();
-    clearMessages(); setResults(null);
-    if (!/^\d{3}$/.test(areaCode)) { setError("Enter a 3-digit area code."); return; }
-    setSearching(true);
-    try {
-      const data = await api(`/api/business/available-numbers?areaCode=${areaCode}`);
-      setResults(data.numbers);
-      if (!data.numbers.length) setError("No numbers available in that area code. Try a different one.");
-    } catch (err) { setError(err.message); }
-    finally { setSearching(false); }
-  }
-
-  async function provision(phoneNumber) {
-    clearMessages();
-    setProvisioning(phoneNumber);
-    try {
-      const data = await api("/api/business/provision-phone", { method: "POST", body: { phoneNumber, replace: true } });
-      onProvisioned(data.phoneNumber);
-      setResults(null); setAreaCode(""); setReplacing(false);
-      setSuccess(`${data.phoneNumber} is your LeadRescue number. Webhooks configured automatically.`);
-    } catch (err) { setError(err.message); }
-    finally { setProvisioning(null); }
-  }
-
-  async function reconfigure() {
-    clearMessages(); setReconfiguring(true);
+  async function resync() {
+    setSyncing(true); setMsg("");
     try {
       await api("/api/business/reconfigure-webhooks", { method: "POST" });
-      setSuccess("Webhooks re-synced — your number is pointed at this server.");
-    } catch (err) { setError(err.message); }
-    finally { setReconfiguring(false); }
+      setMsg("Webhooks re-synced.");
+    } catch (err) { setMsg(err.message); }
+    finally { setSyncing(false); }
   }
-
-  const tabStyle = (active) => ({
-    padding: "0.4rem 1rem", borderRadius: 7, border: "none", cursor: "pointer", fontSize: "0.84rem", fontWeight: 600,
-    background: active ? "#2563eb" : "transparent", color: active ? "#fff" : "#6b7280", transition: "all 0.15s"
-  });
 
   return (
     <div className="panel" style={{ marginBottom: 18 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
         <Phone size={18} style={{ color: "#2563eb" }} />
-        <h2 style={{ margin: 0 }}>Phone number</h2>
+        <h2 style={{ margin: 0 }}>Your LeadRescue number</h2>
       </div>
 
-      {/* Current number display */}
-      {currentNumber && (
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: replacing ? 14 : 0, padding: "0.75rem 1rem", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 9 }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 700, fontSize: "1rem" }}>{currentNumber}</div>
-            <div style={{ fontSize: "0.78rem", color: "#16a34a", marginTop: 2 }}>Active · calls and texts route to your AI</div>
-          </div>
-          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-            <button className="ghost small" onClick={reconfigure} disabled={reconfiguring} style={{ fontSize: "0.78rem", display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
-              <RefreshCw size={12} /> {reconfiguring ? "Syncing…" : "Re-sync"}
-            </button>
-            <button className="ghost small" onClick={() => { setReplacing((r) => !r); clearMessages(); setResults(null); }} style={{ fontSize: "0.78rem", whiteSpace: "nowrap" }}>
-              {replacing ? "Cancel" : "Replace"}
+      {currentNumber ? (
+        <>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "1rem 1.1rem", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 800, fontSize: "1.35rem", letterSpacing: "0.01em", color: "#0f172a" }}>{fmt(currentNumber)}</div>
+              <div style={{ fontSize: "0.78rem", color: "#16a34a", marginTop: 3 }}>
+                This is the number customers call and text. It shows on their caller ID when you call them back.
+              </div>
+            </div>
+            <button className="ghost small" onClick={resync} disabled={syncing} style={{ fontSize: "0.76rem", display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap", flexShrink: 0 }}>
+              <RefreshCw size={11} />{syncing ? "Syncing…" : "Re-sync"}
             </button>
           </div>
+          <p style={{ margin: "10px 0 0", fontSize: "0.78rem", color: "#94a3b8", lineHeight: 1.5 }}>
+            Your number is assigned automatically and stays with your subscription. If you cancel, the number is held in reserve for 30 days before being reassigned.
+          </p>
+        </>
+      ) : (
+        <div style={{ padding: "1rem 1.1rem", background: "#f8fafc", border: "1px solid var(--line)", borderRadius: 10, fontSize: "0.84rem", color: "#64748b" }}>
+          Your LeadRescue phone number will be assigned automatically when you activate a subscription. It will be a local number matching your area code.
         </div>
       )}
 
-      {/* Only show add-number UI when no number exists, or when explicitly replacing */}
-      {(!currentNumber || replacing) && (
-        <>
-          {replacing && (
-            <div style={{ padding: "0.65rem 1rem", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 8, fontSize: "0.8rem", color: "#92400e", marginBottom: 12 }}>
-              Replacing your number will disconnect {currentNumber}. The new number takes over immediately.
-            </div>
-          )}
-          {/* Tabs */}
-          <div style={{ display: "flex", gap: 4, background: "#f3f4f6", borderRadius: 9, padding: 4, marginBottom: 16, marginTop: currentNumber ? 0 : 0 }}>
-            <button style={tabStyle(tab === "existing")} onClick={() => { setTab("existing"); clearMessages(); setResults(null); }}>
-              Use my existing number
-            </button>
-            <button style={tabStyle(tab === "new")} onClick={() => { setTab("new"); clearMessages(); setResults(null); }}>
-              Get a new number
-            </button>
-          </div>
-
-          {tab === "existing" && (
-            <div>
-              <p style={{ fontSize: "0.84rem", color: "#374151", marginTop: 0, marginBottom: 12 }}>
-                Already have a number in your Twilio account? Enter it below and we'll connect it instantly — no purchase needed.
-              </p>
-              <form onSubmit={connectExisting} style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-                <input
-                  value={existingInput}
-                  onChange={(e) => setExistingInput(e.target.value)}
-                  placeholder="+13175550100"
-                  style={{ flex: 1, padding: "0.5rem 0.75rem", border: "1px solid #d1d5db", borderRadius: 8, fontSize: "0.9rem" }}
-                />
-                <button className="button" type="submit" disabled={connecting} style={{ whiteSpace: "nowrap" }}>
-                  {connecting ? "Connecting…" : "Connect number"}
-                </button>
-              </form>
-              <div style={{ padding: "0.75rem 1rem", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, fontSize: "0.8rem", color: "#1e40af" }}>
-                <strong>Using your current business number?</strong> You can keep your existing phone number by porting it into Twilio (takes 2–7 days via Twilio support), or set up <strong>call forwarding</strong> from your current number to a LeadRescue number so missed calls still reach the AI.
-              </div>
-            </div>
-          )}
-
-          {tab === "new" && (
-            <div>
-              <p style={{ fontSize: "0.84rem", color: "#374151", marginTop: 0, marginBottom: 12 }}>
-                Search for an available US number by area code. It will be purchased and configured automatically.
-              </p>
-              <form onSubmit={search} style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-                <input
-                  value={areaCode}
-                  onChange={(e) => setAreaCode(e.target.value.replace(/\D/g, "").slice(0, 3))}
-                  placeholder="Area code (e.g. 317)"
-                  style={{ width: 170, padding: "0.5rem 0.75rem", border: "1px solid #d1d5db", borderRadius: 8, fontSize: "0.9rem" }}
-                />
-                <button className="button" type="submit" disabled={searching} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                  <Search size={14} /> {searching ? "Searching…" : "Search"}
-                </button>
-              </form>
-
-              {results && results.length > 0 && (
-                <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, overflow: "hidden", marginBottom: 10 }}>
-                  {results.map((n) => (
-                    <div key={n.phoneNumber} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: "1px solid #f3f4f6" }}>
-                      <div>
-                        <div style={{ fontWeight: 600, fontSize: "0.88rem" }}>{n.friendlyName || n.phoneNumber}</div>
-                        {n.locality && <div style={{ fontSize: "0.76rem", color: "#9ca3af" }}>{n.locality}, {n.region}</div>}
-                      </div>
-                      <button className="button" onClick={() => provision(n.phoneNumber)} disabled={!!provisioning} style={{ fontSize: "0.8rem", padding: "0.35rem 0.85rem" }}>
-                        {provisioning === n.phoneNumber ? "Getting…" : "Get this number"}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </>
-      )}
-
-      {error && <p style={{ color: "#ef4444", fontSize: "0.84rem", margin: "8px 0 0" }}>{error}</p>}
-      {success && <p style={{ color: "#16a34a", fontSize: "0.84rem", margin: "8px 0 0" }}>{success}</p>}
+      {msg && <p style={{ margin: "8px 0 0", fontSize: "0.8rem", color: msg.includes("re-synced") ? "#16a34a" : "#ef4444" }}>{msg}</p>}
     </div>
   );
 }
@@ -805,10 +685,7 @@ export default function Settings() {
         </div>
       </div>
       <SubscriptionPanel />
-      <TwilioPhonePanel
-        currentNumber={form.twilioPhoneNumber}
-        onProvisioned={(num) => setField("twilioPhoneNumber", num)}
-      />
+      <TwilioPhonePanel currentNumber={form.twilioPhoneNumber} />
       <SmsStatusPanel />
       <form className="panel settings-form" onSubmit={submit}>
         {/* Business info */}

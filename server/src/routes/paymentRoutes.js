@@ -4,6 +4,7 @@ import asyncHandler from "express-async-handler";
 import { requireAuth } from "../middleware/auth.js";
 import { prisma } from "../prisma/client.js";
 import { sendRenewalReminderEmail } from "../services/emailService.js";
+import { provisionNumberForBusiness, poolNumberFromUser } from "../services/phoneProvisioningService.js";
 
 const router = express.Router();
 
@@ -32,6 +33,20 @@ function getPriceId(plan) {
 function publicUser(user) {
   const { passwordHash, ...safe } = user;
   return safe;
+}
+
+async function autoProvisionNumber(userId) {
+  const baseUrl = (process.env.APP_BASE_URL || "").replace(/\/$/, "");
+  if (!baseUrl) return;
+  try {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const business = user ? await prisma.business.findUnique({ where: { ownerId: userId } }) : null;
+    if (user && business) {
+      await provisionNumberForBusiness({ user, business, baseUrl });
+    }
+  } catch (e) {
+    console.error("[auto-provision] Failed:", e.message);
+  }
 }
 
 // POST /api/payments/subscribe — create Stripe subscription checkout session
@@ -93,6 +108,7 @@ router.post(
       }
     });
 
+    autoProvisionNumber(req.user.id); // fire-and-forget
     res.json({ user: publicUser(user) });
   })
 );
@@ -254,16 +270,19 @@ router.post(
             }
           });
           console.log(`[stripe] Subscription activated for user ${userId} (${plan})`);
+          autoProvisionNumber(userId); // fire-and-forget — don't block the webhook response
         }
         break;
       }
       case "customer.subscription.deleted":
       case "customer.subscription.paused": {
         const sub = event.data.object;
+        const affected = await prisma.user.findMany({ where: { stripeSubscriptionId: sub.id }, select: { id: true } });
         await prisma.user.updateMany({
           where: { stripeSubscriptionId: sub.id },
           data: { subscriptionStatus: "inactive" }
         });
+        for (const u of affected) poolNumberFromUser(u.id).catch(() => {}); // recycle numbers async
         console.log(`[stripe] Subscription deactivated: ${sub.id}`);
         break;
       }

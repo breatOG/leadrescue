@@ -221,3 +221,14 @@ model WebhookLog {
   payload    Json
   createdAt  DateTime @default(now())
 }
+
+// Numbers recycled from cancelled subscriptions, available for reassignment
+model PooledPhoneNumber {
+  id          String   @id @default(cuid())
+  phoneNumber String   @unique
+  twilioSid   String?
+  areaCode    String
+  releasedAt  DateTime @default(now())
+
+  @@index([areaCode])
+}
