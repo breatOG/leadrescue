@@ -37,7 +37,8 @@ router.post(
       leadId: req.body.leadId,
       startAt: req.body.startAt,
       notes: req.body.notes,
-      force: true, // manual bookings bypass slot-availability re-validation
+      force: true,   // manual bookings bypass slot-availability re-validation
+      source: "manual",
     });
     const lead = await prisma.lead.findUnique({ where: { id: req.body.leadId } });
     await notifyContractor({ business: req.business, lead, summary: `Appointment booked for ${appointment.startAt.toLocaleString()}.` });

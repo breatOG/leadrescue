@@ -43,7 +43,7 @@ export async function getAvailableSlots(businessId, daysAhead = 10) {
   return slots.slice(0, 12);
 }
 
-export async function bookAppointment({ businessId, leadId, startAt, notes, force = false }) {
+export async function bookAppointment({ businessId, leadId, startAt, notes, force = false, source = "ai" }) {
   let selected;
 
   if (force) {
@@ -67,6 +67,7 @@ export async function bookAppointment({ businessId, leadId, startAt, notes, forc
       leadId,
       startAt: new Date(selected.startAt),
       endAt: new Date(selected.endAt),
+      source,
       notes
     }
   });

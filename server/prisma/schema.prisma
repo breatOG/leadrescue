@@ -193,6 +193,7 @@ model Appointment {
   startAt         DateTime
   endAt           DateTime
   status          AppointmentStatus @default(booked)
+  source          String            @default("ai")   // "ai" | "manual"
   calendarEventId String?
   notes           String?
   createdAt       DateTime          @default(now())

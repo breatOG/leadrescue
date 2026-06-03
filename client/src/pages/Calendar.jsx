@@ -26,6 +26,7 @@ function fmtTime(iso) {
 function AppointmentCard({ appt, onUpdate }) {
   const urg = URGENCY[appt.lead?.priority] || URGENCY.normal;
   const [updating, setUpdating] = useState(null);
+  const isAi = !appt.source || appt.source === "ai";
 
   async function updateStatus(status) {
     setUpdating(status);
@@ -47,6 +48,15 @@ function AppointmentCard({ appt, onUpdate }) {
           <span style={{ fontWeight: 700, fontSize: "0.88rem" }}>
             {fmtTime(appt.startAt)} – {fmtTime(appt.endAt)}
           </span>
+          {isAi ? (
+            <span style={{ fontSize: "0.65rem", fontWeight: 800, color: "#0f766e", background: "#ccfbf1", border: "1px solid #99f6e4", padding: "1px 7px", borderRadius: 99 }}>
+              🤖 AI scheduled
+            </span>
+          ) : (
+            <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "#6b7280", background: "#f3f4f6", border: "1px solid #e5e7eb", padding: "1px 7px", borderRadius: 99 }}>
+              Manual
+            </span>
+          )}
         </div>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
           <span style={{ fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: urg.text, background: "white", border: `1px solid ${urg.border}`, padding: "1px 8px", borderRadius: 99 }}>
@@ -171,6 +181,7 @@ export default function CalendarPage() {
   }, []);
 
   const today = new Date();
+  const aiApptCount = appointments.filter((a) => !a.source || a.source === "ai").length;
 
   // Build month grid cells
   const firstOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
@@ -218,6 +229,15 @@ export default function CalendarPage() {
           <h1>Calendar</h1>
         </div>
       </div>
+
+      {aiApptCount > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 16px", background: "#f0fdfa", border: "1px solid #99f6e4", borderRadius: 10, marginBottom: 18, fontSize: "0.82rem", color: "#0f766e" }}>
+          <span style={{ fontSize: "1rem" }}>🤖</span>
+          <span>
+            <strong>{aiApptCount} appointment{aiApptCount !== 1 ? "s" : ""} were scheduled automatically</strong> — LeadRescue booked these when customers confirmed a time via text or call. They show the <strong>AI scheduled</strong> tag so you always know what came in on its own.
+          </span>
+        </div>
+      )}
 
       {todayAppts.length > 0 && (
         <div className="panel" style={{ marginBottom: 18 }}>
