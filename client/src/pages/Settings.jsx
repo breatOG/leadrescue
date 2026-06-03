@@ -364,20 +364,45 @@ function TwilioPhonePanel({ currentNumber, onNumberAssigned }) {
 }
 
 function SmsStatusPanel() {
-  const [status, setStatus] = useState(() => getCache("smsStatus"));
+  const [data, setData] = useState(() => ({ smsStatus: getCache("smsStatus"), platformConfigured: false }));
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    api("/api/sms-registration").then((d) => { setStatus(d.smsStatus); setCache("smsStatus", d.smsStatus); }).catch(() => {});
+    api("/api/sms-registration").then((d) => {
+      setData({ smsStatus: d.smsStatus, platformConfigured: d.platformConfigured });
+      setCache("smsStatus", d.smsStatus);
+    }).catch(() => {});
   }, []);
 
   async function refresh() {
     setRefreshing(true);
     try {
       const d = await api("/api/sms-registration/refresh", { method: "POST" });
-      setStatus(d.smsStatus);
+      setData((prev) => ({ ...prev, smsStatus: d.smsStatus }));
     } catch {}
     finally { setRefreshing(false); }
+  }
+
+  const { smsStatus: status, platformConfigured } = data;
+
+  // Platform-level campaign is configured — no per-client setup needed
+  if (platformConfigured) {
+    return (
+      <div className="panel" style={{ marginBottom: 18 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <MessageSquare size={18} style={{ color: "#2563eb" }} />
+            <h2 style={{ margin: 0 }}>SMS verification</h2>
+          </div>
+          <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#16a34a", background: "#f0fdf4", border: "1px solid #bbf7d0", padding: "2px 10px", borderRadius: 99, display: "flex", alignItems: "center", gap: 4 }}>
+            <ShieldCheck size={11} /> Platform verified
+          </span>
+        </div>
+        <p style={{ fontSize: "0.84rem", color: "#374151", margin: "10px 0 0", lineHeight: 1.55 }}>
+          LeadRescue's platform SMS campaign is active. Your messages are fully verified with US carriers — no additional setup required on your end.
+        </p>
+      </div>
+    );
   }
 
   const cfg = {

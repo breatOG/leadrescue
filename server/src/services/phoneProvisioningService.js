@@ -38,6 +38,37 @@ async function configureWebhooks(client, numberSid, businessName, baseUrl) {
   });
 }
 
+// Add a number SID to the platform messaging service so it counts under the
+// registered campaign. Safe to call even if the number is already in the service.
+async function addToPlatformService(client, numberSid) {
+  const sid = process.env.TWILIO_PLATFORM_MSG_SERVICE_SID;
+  if (!sid || !numberSid) return;
+  try {
+    await client.messaging.v1.services(sid).phoneNumbers.create({ phoneNumberSid: numberSid });
+    console.log(`[provision] Number ${numberSid} added to platform messaging service`);
+  } catch (e) {
+    if (!e.message?.includes("already exists")) {
+      console.error("[provision] Could not add to platform service:", e.message);
+    }
+  }
+}
+
+// Remove a number from the platform messaging service when recycling it.
+async function removeFromPlatformService(client, phoneNumber) {
+  const sid = process.env.TWILIO_PLATFORM_MSG_SERVICE_SID;
+  if (!sid) return;
+  try {
+    const numbers = await client.messaging.v1.services(sid).phoneNumbers.list({ limit: 200 });
+    const entry = numbers.find((n) => n.phoneNumber === phoneNumber);
+    if (entry) {
+      await client.messaging.v1.services(sid).phoneNumbers(entry.sid).remove();
+      console.log(`[pool] Removed ${phoneNumber} from platform messaging service`);
+    }
+  } catch (e) {
+    console.error("[pool] Could not remove from platform service:", e.message);
+  }
+}
+
 // Assign a phone number to a business when they subscribe.
 // Tries the pool first (same area code), then buys a new number.
 // Returns the assigned phone number string, or null if Twilio isn't configured.
@@ -57,7 +88,10 @@ export async function provisionNumberForBusiness({ user, business, baseUrl }) {
     const pooled = await prisma.pooledPhoneNumber.findFirst({ where: { areaCode: targetArea } });
     if (pooled) {
       try {
-        if (pooled.twilioSid) await configureWebhooks(client, pooled.twilioSid, businessName, base);
+        if (pooled.twilioSid) {
+          await configureWebhooks(client, pooled.twilioSid, businessName, base);
+          await addToPlatformService(client, pooled.twilioSid);
+        }
         await prisma.pooledPhoneNumber.delete({ where: { id: pooled.id } });
         await prisma.business.update({ where: { id: business.id }, data: { twilioPhoneNumber: pooled.phoneNumber } });
         console.log(`[provision] Reused pooled number ${pooled.phoneNumber} for business ${business.id}`);
@@ -97,6 +131,7 @@ export async function provisionNumberForBusiness({ user, business, baseUrl }) {
     return null;
   }
 
+  await addToPlatformService(client, purchased.sid);
   await prisma.business.update({ where: { id: business.id }, data: { twilioPhoneNumber: purchased.phoneNumber } });
   console.log(`[provision] Purchased ${purchased.phoneNumber} for business ${business.id}`);
   return purchased.phoneNumber;
@@ -139,6 +174,7 @@ export async function purchaseSelectedNumber({ phoneNumber, business, baseUrl })
     statusCallbackMethod: "POST"
   });
 
+  await addToPlatformService(client, purchased.sid);
   await prisma.business.update({ where: { id: business.id }, data: { twilioPhoneNumber: purchased.phoneNumber } });
   console.log(`[provision] Pro/Scale selected ${purchased.phoneNumber} for business ${business.id}`);
   return purchased.phoneNumber;
@@ -157,7 +193,7 @@ export async function poolNumberFromUser(userId) {
   const phoneNumber = business.twilioPhoneNumber;
   const areaCode = areaCodeFrom(phoneNumber);
 
-  // Disconnect webhooks on the Twilio side
+  // Disconnect webhooks and remove from the platform campaign service
   try {
     const [number] = await client.incomingPhoneNumbers.list({ phoneNumber, limit: 1 });
     if (number) {
@@ -167,6 +203,7 @@ export async function poolNumberFromUser(userId) {
         voiceUrl: "",
         statusCallback: ""
       });
+      await removeFromPlatformService(client, phoneNumber);
       await prisma.pooledPhoneNumber.upsert({
         where: { phoneNumber },
         update: { twilioSid: number.sid, areaCode, releasedAt: new Date() },
