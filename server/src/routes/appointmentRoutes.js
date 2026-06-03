@@ -13,7 +13,7 @@ router.get(
   "/appointments",
   asyncHandler(async (req, res) => {
     const appointments = await prisma.appointment.findMany({
-      where: { businessId: req.business.id },
+      where: { businessId: req.business.id, status: { not: "cancelled" } },
       include: { lead: true },
       orderBy: { startAt: "asc" }
     });

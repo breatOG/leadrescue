@@ -127,6 +127,7 @@ export default function LeadDetail() {
   const [slots, setSlots] = useState([]);
   const [showBooking, setShowBooking] = useState(false);
   const [bookingSlot, setBookingSlot] = useState("");
+  const [bookingCustomTime, setBookingCustomTime] = useState("");
   const [booking, setBooking] = useState(false);
   const [calling, setCalling] = useState(false);
   const [callMsg, setCallMsg] = useState("");
@@ -209,11 +210,13 @@ export default function LeadDetail() {
 
   async function bookManually(e) {
     e.preventDefault();
-    if (!bookingSlot) return;
+    const startAt = bookingSlot || bookingCustomTime;
+    if (!startAt) return;
     setBooking(true);
     try {
-      await api("/api/appointments/book", { method: "POST", body: { leadId: id, startAt: bookingSlot, notes: "Manually booked by team." } });
+      await api("/api/appointments/book", { method: "POST", body: { leadId: id, startAt, notes: "Manually booked by team." } });
       setShowBooking(false);
+      setBookingCustomTime("");
       await loadLead();
     } catch (err) {
       alert(err.message);
@@ -297,10 +300,21 @@ export default function LeadDetail() {
                 ))}
               </select>
             )}
+            <input
+              type="datetime-local"
+              value={bookingCustomTime}
+              onChange={(e) => { setBookingCustomTime(e.target.value); setBookingSlot(""); }}
+              style={{ padding: "7px 10px", border: "1px solid var(--line)", borderRadius: 8, fontSize: "0.88rem" }}
+            />
             <div style={{ display: "flex", gap: 8 }}>
               {slots.length > 0 && (
                 <button className="button" type="submit" disabled={booking} style={{ fontSize: "0.83rem" }}>
                   {booking ? "Booking…" : "Confirm booking"}
+                </button>
+              )}
+              {slots.length === 0 && (
+                <button className="button" type="submit" disabled={booking || !bookingCustomTime} style={{ fontSize: "0.83rem" }}>
+                  {booking ? "Booking..." : "Confirm booking"}
                 </button>
               )}
               <button type="button" className="ghost" onClick={() => setShowBooking(false)} style={{ fontSize: "0.83rem" }}>Cancel</button>
@@ -308,8 +322,8 @@ export default function LeadDetail() {
           </form>
         )}
 
-        {lead.appointments.length ? (
-          lead.appointments.map((apt) => (
+        {lead.appointments.filter((appointment) => appointment.status !== "cancelled").length ? (
+          lead.appointments.filter((appointment) => appointment.status !== "cancelled").map((apt) => (
             <AppointmentRow key={apt.id} apt={apt} onUpdate={loadLead} />
           ))
         ) : (

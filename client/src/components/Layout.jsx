@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
-import { CalendarDays, CalendarRange, LayoutDashboard, LogOut, Mail, Settings, Table2, X } from "lucide-react";
+import { Bell, CalendarDays, CalendarRange, LayoutDashboard, LogOut, Mail, Settings, Table2, X } from "lucide-react";
 import { api, getUser, setToken, setUser } from "../api/client.js";
+import { isLeadNew } from "../utils/seenLeads.js";
 
 function VerifyEmailBanner() {
   const user = getUser();
@@ -53,11 +54,61 @@ const NAV_ITEMS = [
 
 export function Layout() {
   const navigate = useNavigate();
+  const [newActivityCount, setNewActivityCount] = useState(0);
+  const [latestActivity, setLatestActivity] = useState(null);
+  const [dismissedActivityKey, setDismissedActivityKey] = useState(() => localStorage.getItem("lr_dismissed_activity") || "");
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadActivity() {
+      try {
+        const { leads = [] } = await api("/api/leads");
+        if (!mounted) return;
+
+        const newLeads = leads.filter(isLeadNew);
+        setNewActivityCount(newLeads.length);
+
+        const latest = newLeads
+          .slice()
+          .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))[0];
+        const activityKey = latest ? `${latest.id}:${latest.updatedAt}` : "";
+
+        if (latest && activityKey !== dismissedActivityKey) {
+          setLatestActivity({ ...latest, activityKey });
+        } else if (!latest) {
+          setLatestActivity(null);
+        }
+      } catch {
+        /* keep the shell quiet if the activity poll misses once */
+      }
+    }
+
+    loadActivity();
+    const interval = setInterval(loadActivity, 15000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [dismissedActivityKey]);
+
+  useEffect(() => {
+    document.title = newActivityCount > 0 ? `(${newActivityCount}) LeadRescue` : "LeadRescue";
+  }, [newActivityCount]);
 
   function logout() {
     setToken(null);
     setUser(null);
     navigate("/login");
+  }
+
+  function dismissActivity() {
+    const key = latestActivity?.activityKey || "";
+    if (key) {
+      localStorage.setItem("lr_dismissed_activity", key);
+      setDismissedActivityKey(key);
+    }
+    setLatestActivity(null);
   }
 
   return (
@@ -70,7 +121,10 @@ export function Layout() {
         </Link>
         <nav>
           {NAV_ITEMS.map(({ to, label, Icon }) => (
-            <NavLink key={to} to={to}><Icon size={18} /> {label}</NavLink>
+            <NavLink key={to} to={to}>
+              <Icon size={18} /> {label}
+              {to === "/leads" && newActivityCount > 0 && <span className="nav-count">{newActivityCount}</span>}
+            </NavLink>
           ))}
         </nav>
         <button className="ghost full" onClick={logout}><LogOut size={18} /> Logout</button>
@@ -87,6 +141,16 @@ export function Layout() {
 
       <main className="main-panel">
         <VerifyEmailBanner />
+        {latestActivity && (
+          <div className="activity-toast">
+            <Bell size={18} />
+            <Link to={`/leads/${latestActivity.id}`} onClick={dismissActivity}>
+              <strong>New {latestActivity.source === "missed_call" ? "call" : "message"}</strong>
+              <span>{latestActivity.customerName || latestActivity.customerPhone}</span>
+            </Link>
+            <button onClick={dismissActivity} aria-label="Dismiss notification"><X size={16} /></button>
+          </div>
+        )}
         <Outlet />
       </main>
 
@@ -96,6 +160,7 @@ export function Layout() {
           <NavLink key={to} to={to}>
             <Icon size={21} />
             <span>{label}</span>
+            {to === "/leads" && newActivityCount > 0 && <span className="nav-count mobile">{newActivityCount}</span>}
           </NavLink>
         ))}
       </nav>

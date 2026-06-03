@@ -1,7 +1,9 @@
 import WebSocket from "ws";
 import { prisma } from "../prisma/client.js";
-import { runAiLeadAgent } from "./aiLeadAgent.js";
+import { analyzeCallTranscript, runAiLeadAgent } from "./aiLeadAgent.js";
 import { notifyContractor } from "./notificationService.js";
+import { bookAppointment, getAvailableSlots } from "./schedulingService.js";
+import { sendSms } from "./twilioService.js";
 
 const DEFAULT_INSTRUCTIONS = `# Role
 You are the front-desk receptionist for the contractor. You sound like a calm, friendly human office coordinator, not a bot.
@@ -334,7 +336,55 @@ async function saveVoiceCall({ leadId, businessId, transcript }) {
     }
   });
 
-  notifyContractor({ business, lead: updatedLead, summary: aiResult.contractorSummary })
+  let notificationSummary = aiResult.contractorSummary;
+  const transcriptText = transcript.map((line) => `${line.speaker}: ${line.body}`).join("\n");
+
+  try {
+    const slots = await getAvailableSlots(businessId);
+    const analysis = await analyzeCallTranscript({ business, lead: updatedLead, transcript: transcriptText, availableSlots: slots });
+    const slot = analysis?.appointmentSlotIndex != null ? slots[analysis.appointmentSlotIndex] : null;
+
+    if (slot) {
+      const existing = await prisma.appointment.findFirst({ where: { leadId, status: "booked" } });
+
+      if (!existing) {
+        const appointment = await bookAppointment({
+          businessId,
+          leadId,
+          startAt: slot.startAt,
+          notes: "Auto-booked from realtime voice call."
+        });
+        const aptTz = process.env.BUSINESS_TIMEZONE || "America/Indiana/Indianapolis";
+        const aptTimeStr = new Date(appointment.startAt).toLocaleString("en-US", {
+          timeZone: aptTz,
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true
+        });
+        const confirmMsg = `Your appointment with ${business.name} is confirmed for ${aptTimeStr}. See you then!`;
+        const sent = await sendSms({
+          to: updatedLead.customerPhone,
+          from: business.twilioPhoneNumber || process.env.TWILIO_PHONE_NUMBER,
+          body: confirmMsg
+        }).catch(() => null);
+        if (sent) {
+          await prisma.message.create({
+            data: { leadId, direction: "outbound", channel: "sms", body: confirmMsg, twilioSid: sent?.sid }
+          });
+        }
+        notificationSummary = `Appointment booked for ${aptTimeStr}. ${analysis.contractorSummary || notificationSummary || ""}`.trim();
+        console.log(`[voice-ai] Appointment booked from realtime call for lead ${leadId}`);
+      }
+    }
+  } catch (error) {
+    console.error("[voice-ai] Appointment analysis failed:", error.message);
+  }
+
+  const notifyLead = await prisma.lead.findUnique({ where: { id: leadId } });
+  notifyContractor({ business, lead: notifyLead || updatedLead, summary: notificationSummary })
     .catch((e) => console.error("[voice-ai] Notify failed:", e.message));
 }
 

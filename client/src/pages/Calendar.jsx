@@ -240,7 +240,7 @@ export default function CalendarPage() {
       api("/api/appointments"),
       api("/api/business/settings")
     ]);
-    const appts = apptData.appointments || [];
+    const appts = (apptData.appointments || []).filter((appointment) => appointment.status !== "cancelled");
     const avail = bizData.business?.availability || [];
     setAppointments(appts); setCache("appointments", appts);
     setAvailability(avail); setCache("availability", avail);
@@ -253,7 +253,8 @@ export default function CalendarPage() {
   }, []);
 
   const today = new Date();
-  const aiApptCount = appointments.filter((a) => !a.source || a.source === "ai").length;
+  const visibleAppointments = appointments.filter((appointment) => appointment.status !== "cancelled");
+  const aiApptCount = visibleAppointments.filter((a) => !a.source || a.source === "ai").length;
 
   // Build month grid cells
   const firstOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
@@ -267,18 +268,18 @@ export default function CalendarPage() {
 
   function apptCountForDay(date) {
     if (!date) return 0;
-    return appointments.filter((a) => isSameDay(new Date(a.startAt), date)).length;
+    return visibleAppointments.filter((a) => isSameDay(new Date(a.startAt), date)).length;
   }
 
-  const selectedAppts = appointments
+  const selectedAppts = visibleAppointments
     .filter((a) => isSameDay(new Date(a.startAt), selected))
     .sort((a, b) => new Date(a.startAt) - new Date(b.startAt));
 
-  const todayAppts = appointments
+  const todayAppts = visibleAppointments
     .filter((a) => isSameDay(new Date(a.startAt), today))
     .sort((a, b) => new Date(a.startAt) - new Date(b.startAt));
 
-  const upcomingAppts = appointments
+  const upcomingAppts = visibleAppointments
     .filter((a) => new Date(a.startAt) > today && a.status === "booked")
     .sort((a, b) => new Date(a.startAt) - new Date(b.startAt))
     .slice(0, 5);

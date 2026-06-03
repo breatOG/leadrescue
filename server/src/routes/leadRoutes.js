@@ -20,7 +20,10 @@ router.get(
   asyncHandler(async (req, res) => {
     const leads = await prisma.lead.findMany({
       where: { businessId: req.business.id },
-      include: { messages: { orderBy: { createdAt: "desc" }, take: 1 }, appointments: true },
+      include: {
+        messages: { orderBy: { createdAt: "desc" }, take: 1 },
+        appointments: { where: { status: { not: "cancelled" } }, orderBy: { startAt: "asc" } }
+      },
       orderBy: { updatedAt: "desc" }
     });
     res.json({ leads });
@@ -34,7 +37,7 @@ router.get(
       where: { id: req.params.id, businessId: req.business.id },
       include: {
         messages: { orderBy: { createdAt: "asc" } },
-        appointments: { orderBy: { startAt: "asc" } }
+        appointments: { where: { status: { not: "cancelled" } }, orderBy: { startAt: "asc" } }
       }
     });
 
