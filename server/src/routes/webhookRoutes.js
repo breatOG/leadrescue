@@ -678,13 +678,22 @@ router.post(
     // Book the appointment the AI confirmed during the call
     if (bookedSlotIndex != null && voiceSlots?.[bookedSlotIndex]) {
       try {
-        await bookAppointment({
+        const apt = await bookAppointment({
           businessId: business.id,
           leadId: lead.id,
           startAt: voiceSlots[bookedSlotIndex].startAt,
           notes: "Booked during AI voice call."
         });
         console.log(`[voice] Appointment booked at slot ${bookedSlotIndex} for lead ${lead.id}`);
+        // Send SMS confirmation so the customer has the date/time in writing
+        const aptTz = process.env.BUSINESS_TIMEZONE || "America/Indiana/Indianapolis";
+        const aptTimeStr = new Date(apt.startAt).toLocaleString("en-US", { timeZone: aptTz, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
+        const confirmMsg = `Your appointment with ${business.name} is confirmed for ${aptTimeStr}. See you then!`;
+        const twilioNum = business.twilioPhoneNumber || process.env.TWILIO_PHONE_NUMBER;
+        const sent = await sendSms({ to: lead.customerPhone, from: twilioNum, body: confirmMsg }).catch(() => null);
+        if (sent) {
+          await prisma.message.create({ data: { leadId: lead.id, direction: "outbound", channel: "sms", body: confirmMsg, twilioSid: sent?.sid } });
+        }
       } catch (e) {
         console.error("[voice] Appointment booking failed:", e.message);
       }
@@ -832,8 +841,16 @@ router.post(
         const slot = slots[analysis.appointmentSlotIndex];
         const existing = await prisma.appointment.findFirst({ where: { leadId, status: "booked" } });
         if (!existing) {
-          await bookAppointment({ businessId, leadId, startAt: slot.startAt, notes: "Auto-booked from Watch Mode call recording." });
+          const apt = await bookAppointment({ businessId, leadId, startAt: slot.startAt, notes: "Auto-booked from Watch Mode call recording." });
           console.log(`[watch] Appointment booked from recorded call for lead ${leadId}`);
+          const aptTz = process.env.BUSINESS_TIMEZONE || "America/Indiana/Indianapolis";
+          const aptTimeStr = new Date(apt.startAt).toLocaleString("en-US", { timeZone: aptTz, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
+          const confirmMsg = `Your appointment with ${business.name} is confirmed for ${aptTimeStr}. See you then!`;
+          const twilioNum = business.twilioPhoneNumber || process.env.TWILIO_PHONE_NUMBER;
+          const sent = await sendSms({ to: lead.customerPhone, from: twilioNum, body: confirmMsg }).catch(() => null);
+          if (sent) {
+            await prisma.message.create({ data: { leadId, direction: "outbound", channel: "sms", body: confirmMsg, twilioSid: sent?.sid } });
+          }
         }
       }
 

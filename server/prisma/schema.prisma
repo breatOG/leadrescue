@@ -190,16 +190,13 @@ model Appointment {
   business     Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
   leadId       String
   lead         Lead              @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  startAt             DateTime
-  endAt               DateTime
-  status              AppointmentStatus @default(booked)
-  calendarEventId     String?
-  notes               String?
-  reminder24hSentAt   DateTime?
-  reminder2hSentAt    DateTime?
-  followUpSentAt      DateTime?
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
+  startAt         DateTime
+  endAt           DateTime
+  status          AppointmentStatus @default(booked)
+  calendarEventId String?
+  notes           String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
 
   @@index([businessId, startAt])
 }

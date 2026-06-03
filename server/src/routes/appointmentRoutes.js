@@ -4,6 +4,7 @@ import { prisma } from "../prisma/client.js";
 import { requireAuth } from "../middleware/auth.js";
 import { bookAppointment, getAvailableSlots } from "../services/schedulingService.js";
 import { notifyContractor } from "../services/notificationService.js";
+import { sendSms } from "../services/twilioService.js";
 
 const router = express.Router();
 router.use(requireAuth);
@@ -39,6 +40,19 @@ router.post(
     });
     const lead = await prisma.lead.findUnique({ where: { id: req.body.leadId } });
     await notifyContractor({ business: req.business, lead, summary: `Appointment booked for ${appointment.startAt.toLocaleString()}.` });
+
+    // Send confirmation SMS to the customer
+    if (lead?.customerPhone) {
+      const tz = process.env.BUSINESS_TIMEZONE || "America/Indiana/Indianapolis";
+      const aptTimeStr = new Date(appointment.startAt).toLocaleString("en-US", { timeZone: tz, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
+      const confirmMsg = `Your appointment with ${req.business.name} is confirmed for ${aptTimeStr}. See you then!`;
+      const twilioNum = req.business.twilioPhoneNumber || process.env.TWILIO_PHONE_NUMBER;
+      const sent = await sendSms({ to: lead.customerPhone, from: twilioNum, body: confirmMsg }).catch(() => null);
+      if (sent) {
+        await prisma.message.create({ data: { leadId: lead.id, direction: "outbound", channel: "sms", body: confirmMsg, twilioSid: sent?.sid } });
+      }
+    }
+
     res.status(201).json({ appointment });
   })
 );
