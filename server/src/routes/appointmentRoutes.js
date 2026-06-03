@@ -59,6 +59,50 @@ router.post(
   })
 );
 
+// Reschedule: cancel existing appointment and book a new one at newStartAt
+router.post(
+  "/appointments/:id/reschedule",
+  asyncHandler(async (req, res) => {
+    const { newStartAt } = req.body;
+    if (!newStartAt) return res.status(400).json({ error: "newStartAt is required" });
+
+    const existing = await prisma.appointment.findFirst({
+      where: { id: req.params.id, businessId: req.business.id },
+      include: { lead: true },
+    });
+    if (!existing) return res.status(404).json({ error: "Appointment not found" });
+
+    await prisma.appointment.update({ where: { id: existing.id }, data: { status: "cancelled" } });
+
+    const newAppt = await bookAppointment({
+      businessId: req.business.id,
+      leadId: existing.leadId,
+      startAt: newStartAt,
+      notes: existing.notes,
+      force: true,
+      source: existing.source || "manual",
+    });
+
+    if (existing.lead?.customerPhone) {
+      const tz = process.env.BUSINESS_TIMEZONE || "America/Indiana/Indianapolis";
+      const aptStr = new Date(newAppt.startAt).toLocaleString("en-US", {
+        timeZone: tz, weekday: "short", month: "short", day: "numeric",
+        hour: "numeric", minute: "2-digit", hour12: true,
+      });
+      const msg = `Your appointment has been rescheduled to ${aptStr}. See you then!`;
+      const twilioNum = req.business.twilioPhoneNumber || process.env.TWILIO_PHONE_NUMBER;
+      const sent = await sendSms({ to: existing.lead.customerPhone, from: twilioNum, body: msg }).catch(() => null);
+      if (sent) {
+        await prisma.message.create({
+          data: { leadId: existing.leadId, direction: "outbound", channel: "sms", body: msg, twilioSid: sent?.sid },
+        });
+      }
+    }
+
+    res.json({ appointment: newAppt });
+  })
+);
+
 router.patch(
   "/appointments/:id",
   asyncHandler(async (req, res) => {

@@ -26,9 +26,15 @@ function fmtTime(iso) {
 function AppointmentCard({ appt, onUpdate }) {
   const urg = URGENCY[appt.lead?.priority] || URGENCY.normal;
   const [updating, setUpdating] = useState(null);
+  const [showReschedule, setShowReschedule] = useState(false);
+  const [rescheduleSlots, setRescheduleSlots] = useState([]);
+  const [newSlot, setNewSlot] = useState("");
+  const [customTime, setCustomTime] = useState("");
+  const [rescheduling, setRescheduling] = useState(false);
   const isAi = !appt.source || appt.source === "ai";
 
   async function updateStatus(status) {
+    if (status === "cancelled" && !window.confirm("Cancel this appointment? The customer will not be notified automatically — send them a message if needed.")) return;
     setUpdating(status);
     try {
       await api(`/api/appointments/${appt.id}`, { method: "PATCH", body: { status } });
@@ -40,10 +46,38 @@ function AppointmentCard({ appt, onUpdate }) {
     }
   }
 
+  async function openReschedule() {
+    setShowReschedule(true);
+    if (!rescheduleSlots.length) {
+      try {
+        const { slots } = await api("/api/availability");
+        setRescheduleSlots(slots || []);
+        if (slots?.length) setNewSlot(slots[0].startAt);
+      } catch { /* ignore */ }
+    }
+  }
+
+  async function submitReschedule(e) {
+    e.preventDefault();
+    const startAt = newSlot || customTime;
+    if (!startAt) return;
+    setRescheduling(true);
+    try {
+      await api(`/api/appointments/${appt.id}/reschedule`, { method: "POST", body: { newStartAt: startAt } });
+      setShowReschedule(false);
+      onUpdate?.();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setRescheduling(false);
+    }
+  }
+
   return (
     <div style={{ border: `1px solid ${urg.border}`, background: urg.bg, borderRadius: 10, padding: "0.85rem 1rem", marginBottom: 10 }}>
+      {/* Header row: time + badges + quick-cancel × */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
           <Clock size={13} style={{ color: "#6b7280" }} />
           <span style={{ fontWeight: 700, fontSize: "0.88rem" }}>
             {fmtTime(appt.startAt)} – {fmtTime(appt.endAt)}
@@ -57,15 +91,24 @@ function AppointmentCard({ appt, onUpdate }) {
               Manual
             </span>
           )}
-        </div>
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <span style={{ fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: urg.text, background: "white", border: `1px solid ${urg.border}`, padding: "1px 8px", borderRadius: 99 }}>
+          <span style={{ fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", color: urg.text, background: "white", border: `1px solid ${urg.border}`, padding: "1px 8px", borderRadius: 99 }}>
             {urg.label}
           </span>
-          <span style={{ fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: STATUS_COLOR[appt.status] || "#6b7280" }}>
+          <span style={{ fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", color: STATUS_COLOR[appt.status] || "#6b7280" }}>
             {appt.status}
           </span>
         </div>
+        {/* Quick-cancel × always visible */}
+        {appt.status === "booked" && (
+          <button
+            onClick={() => updateStatus("cancelled")}
+            disabled={!!updating}
+            title="Cancel appointment"
+            style={{ background: "#fee2e2", border: "1px solid #fca5a5", color: "#dc2626", borderRadius: 7, padding: "3px 9px", fontWeight: 800, fontSize: "1rem", cursor: "pointer", lineHeight: 1, flexShrink: 0 }}
+          >
+            ×
+          </button>
+        )}
       </div>
 
       <Link to={`/leads/${appt.leadId}`} style={{ textDecoration: "none", color: "inherit" }}>
@@ -124,21 +167,50 @@ function AppointmentCard({ appt, onUpdate }) {
       </Link>
 
       {appt.status === "booked" && (
-        <div style={{ display: "flex", gap: 6, marginTop: 10, borderTop: "1px solid rgba(0,0,0,0.07)", paddingTop: 8 }}>
-          <button
-            onClick={() => updateStatus("completed")}
-            disabled={!!updating}
-            style={{ flex: 1, padding: "5px 0", fontSize: "0.76rem", fontWeight: 700, background: "#dcfce7", color: "#15803d", border: "1px solid #bbf7d0", borderRadius: 7, cursor: "pointer", opacity: updating ? 0.6 : 1 }}
-          >
-            {updating === "completed" ? "Marking…" : "Mark complete"}
-          </button>
-          <button
-            onClick={() => updateStatus("cancelled")}
-            disabled={!!updating}
-            style={{ flex: 1, padding: "5px 0", fontSize: "0.76rem", fontWeight: 700, background: "#fee2e2", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: 7, cursor: "pointer", opacity: updating ? 0.6 : 1 }}
-          >
-            {updating === "cancelled" ? "Cancelling…" : "Cancel"}
-          </button>
+        <div style={{ marginTop: 10, borderTop: "1px solid rgba(0,0,0,0.07)", paddingTop: 10 }}>
+          {/* Reschedule inline form */}
+          {showReschedule ? (
+            <form onSubmit={submitReschedule} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ fontWeight: 700, fontSize: "0.82rem", color: "#0f172a" }}>Pick a new time</div>
+              {rescheduleSlots.length > 0 && (
+                <select value={newSlot} onChange={(e) => setNewSlot(e.target.value)} style={{ padding: "7px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: "0.86rem" }}>
+                  {rescheduleSlots.map((s) => (
+                    <option key={s.startAt} value={s.startAt}>
+                      {new Date(s.startAt).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <div style={{ fontSize: "0.75rem", color: "#94a3b8" }}>Or enter a custom date/time:</div>
+              <input type="datetime-local" value={customTime} onChange={(e) => { setCustomTime(e.target.value); setNewSlot(""); }}
+                style={{ padding: "7px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: "0.86rem" }} />
+              <div style={{ display: "flex", gap: 8 }}>
+                <button type="submit" disabled={rescheduling || (!newSlot && !customTime)}
+                  style={{ flex: 1, padding: "8px 0", fontWeight: 700, fontSize: "0.83rem", background: "#0f766e", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", opacity: rescheduling ? 0.6 : 1 }}>
+                  {rescheduling ? "Rescheduling…" : "Confirm reschedule"}
+                </button>
+                <button type="button" onClick={() => setShowReschedule(false)}
+                  style={{ padding: "8px 14px", fontWeight: 600, fontSize: "0.83rem", background: "#f1f5f9", color: "#374151", border: "1px solid #e5e7eb", borderRadius: 8, cursor: "pointer" }}>
+                  Back
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={openReschedule} disabled={!!updating}
+                style={{ flex: 1, padding: "9px 0", fontWeight: 700, fontSize: "0.82rem", background: "#eff6ff", color: "#2563eb", border: "1px solid #bfdbfe", borderRadius: 8, cursor: "pointer" }}>
+                📅 Reschedule
+              </button>
+              <button onClick={() => updateStatus("completed")} disabled={!!updating}
+                style={{ flex: 1, padding: "9px 0", fontWeight: 700, fontSize: "0.82rem", background: "#dcfce7", color: "#15803d", border: "1px solid #bbf7d0", borderRadius: 8, cursor: "pointer", opacity: updating ? 0.6 : 1 }}>
+                {updating === "completed" ? "Saving…" : "✓ Complete"}
+              </button>
+              <button onClick={() => updateStatus("cancelled")} disabled={!!updating}
+                style={{ flex: 1, padding: "9px 0", fontWeight: 700, fontSize: "0.82rem", background: "#fee2e2", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: 8, cursor: "pointer", opacity: updating ? 0.6 : 1 }}>
+                {updating === "cancelled" ? "Cancelling…" : "✕ Cancel"}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

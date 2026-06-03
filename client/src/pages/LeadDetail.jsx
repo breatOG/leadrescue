@@ -4,6 +4,104 @@ import { api, getCache, setCache } from "../api/client.js";
 import { markLeadSeen } from "../utils/seenLeads.js";
 import { Badge } from "../components/Layout.jsx";
 
+function AppointmentRow({ apt, onUpdate }) {
+  const [showReschedule, setShowReschedule] = useState(false);
+  const [slots, setSlots] = useState([]);
+  const [slot, setSlot] = useState("");
+  const [customTime, setCustomTime] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const statusColor = { booked: "#2563eb", completed: "#16a34a", cancelled: "#ef4444" };
+  const isBooked = apt.status === "booked";
+
+  async function cancel() {
+    if (!window.confirm("Cancel this appointment?")) return;
+    setBusy(true);
+    try {
+      await api(`/api/appointments/${apt.id}`, { method: "PATCH", body: { status: "cancelled" } });
+      onUpdate?.();
+    } catch (e) { alert(e.message); }
+    finally { setBusy(false); }
+  }
+
+  async function openReschedule() {
+    setShowReschedule(true);
+    if (!slots.length) {
+      try {
+        const { slots: s } = await api("/api/availability");
+        setSlots(s || []);
+        if (s?.length) setSlot(s[0].startAt);
+      } catch { /* ignore */ }
+    }
+  }
+
+  async function submitReschedule(e) {
+    e.preventDefault();
+    const startAt = slot || customTime;
+    if (!startAt) return;
+    setBusy(true);
+    try {
+      await api(`/api/appointments/${apt.id}/reschedule`, { method: "POST", body: { newStartAt: startAt } });
+      setShowReschedule(false);
+      onUpdate?.();
+    } catch (err) { alert(err.message); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: "10px 14px", marginBottom: 8, background: isBooked ? "#f0fdf4" : "#fafafa" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
+        <div>
+          <span style={{ fontWeight: 700, fontSize: "0.88rem" }}>
+            {new Date(apt.startAt).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+          </span>
+          {apt.source === "ai" && (
+            <span style={{ marginLeft: 7, fontSize: "0.65rem", fontWeight: 800, color: "#0f766e", background: "#ccfbf1", border: "1px solid #99f6e4", padding: "1px 6px", borderRadius: 99 }}>🤖 AI</span>
+          )}
+        </div>
+        <span style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", color: statusColor[apt.status] || "#6b7280" }}>{apt.status}</span>
+      </div>
+      {isBooked && !showReschedule && (
+        <div style={{ display: "flex", gap: 7, marginTop: 8 }}>
+          <button onClick={openReschedule} disabled={busy}
+            style={{ flex: 1, padding: "7px 0", fontWeight: 700, fontSize: "0.78rem", background: "#eff6ff", color: "#2563eb", border: "1px solid #bfdbfe", borderRadius: 7, cursor: "pointer" }}>
+            📅 Reschedule
+          </button>
+          <button onClick={cancel} disabled={busy}
+            style={{ flex: 1, padding: "7px 0", fontWeight: 700, fontSize: "0.78rem", background: "#fee2e2", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: 7, cursor: "pointer" }}>
+            {busy ? "Cancelling…" : "✕ Cancel"}
+          </button>
+        </div>
+      )}
+      {isBooked && showReschedule && (
+        <form onSubmit={submitReschedule} style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 7 }}>
+          {slots.length > 0 && (
+            <select value={slot} onChange={(e) => setSlot(e.target.value)} style={{ padding: "7px 10px", border: "1px solid #d1d5db", borderRadius: 7, fontSize: "0.85rem" }}>
+              {slots.map((s) => (
+                <option key={s.startAt} value={s.startAt}>
+                  {new Date(s.startAt).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                </option>
+              ))}
+            </select>
+          )}
+          <input type="datetime-local" value={customTime} onChange={(e) => { setCustomTime(e.target.value); setSlot(""); }}
+            style={{ padding: "7px 10px", border: "1px solid #d1d5db", borderRadius: 7, fontSize: "0.85rem" }} />
+          <div style={{ display: "flex", gap: 7 }}>
+            <button type="submit" disabled={busy || (!slot && !customTime)}
+              style={{ flex: 1, padding: "7px 0", fontWeight: 700, fontSize: "0.78rem", background: "#0f766e", color: "#fff", border: "none", borderRadius: 7, cursor: "pointer" }}>
+              {busy ? "Saving…" : "Confirm"}
+            </button>
+            <button type="button" onClick={() => setShowReschedule(false)}
+              style={{ padding: "7px 12px", fontWeight: 600, fontSize: "0.78rem", background: "#f1f5f9", color: "#374151", border: "1px solid #e5e7eb", borderRadius: 7, cursor: "pointer" }}>
+              Back
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
 function Field({ label, value }) {
   if (!value) return null;
   return (
@@ -212,11 +310,7 @@ export default function LeadDetail() {
 
         {lead.appointments.length ? (
           lead.appointments.map((apt) => (
-            <div key={apt.id} className="detail-field">
-              <span className="detail-label">{apt.status}</span>
-              <strong>{new Date(apt.startAt).toLocaleString()} – {new Date(apt.endAt).toLocaleTimeString()}</strong>
-              {apt.notes && <p className="apt-notes">{apt.notes}</p>}
-            </div>
+            <AppointmentRow key={apt.id} apt={apt} onUpdate={loadLead} />
           ))
         ) : (
           <p style={{ color: "#94a3b8", fontSize: "0.85rem" }}>No appointment booked yet.</p>
