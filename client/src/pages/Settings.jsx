@@ -3,6 +3,25 @@ import { Link } from "react-router-dom";
 import { CheckCircle, MessageSquare, ShieldCheck, Zap } from "lucide-react";
 import { api, getCache, setCache, getUser } from "../api/client.js";
 
+// Accept any common format (8123141609, 812-314-1609, (812)314-1609, +18123141609)
+// and normalize to E.164 (+1XXXXXXXXXX) for storage.
+function toE164(raw) {
+  if (!raw) return "";
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits[0] === "1") return `+${digits}`;
+  return raw; // pass through if unrecognized
+}
+
+// Display as (NXX) NXX-XXXX for a 10- or 11-digit US number
+function fmtPhone(raw) {
+  if (!raw) return "";
+  const digits = raw.replace(/\D/g, "");
+  const d = digits.length === 11 && digits[0] === "1" ? digits.slice(1) : digits;
+  if (d.length !== 10) return raw;
+  return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
+}
+
 const PLAN_FEATURES = {
   starter: {
     label: "Starter",
@@ -648,9 +667,7 @@ export default function Settings() {
       body: {
         name: form.name,
         industryType: form.industryType,
-        twilioPhoneNumber: form.twilioPhoneNumber,
-        businessPhoneNumber: form.businessPhoneNumber,
-        ownerNotificationPhone: form.ownerNotificationPhone,
+        ownerNotificationPhone: toE164(form.ownerNotificationPhone),
         ownerNotificationEmail: form.ownerNotificationEmail,
         callHandlingMode: form.callHandlingMode || "ring_first",
         ringSeconds: Number(form.ringSeconds) || 15,
@@ -711,11 +728,10 @@ export default function Settings() {
         {/* Notifications */}
         <div style={{ marginBottom: 8 }}>
           <h2 style={{ margin: "0 0 4px", fontSize: "1rem" }}>Notifications</h2>
-          <p style={{ margin: 0, fontSize: "0.8rem", color: "#94a3b8" }}>Where to send alerts when the AI qualifies a new lead. Text alerts go to your mobile number (set under Call handling below).</p>
+          <p style={{ margin: 0, fontSize: "0.8rem", color: "#94a3b8" }}>Where LeadRescue sends you lead alerts.</p>
         </div>
         <div className="form-grid">
           <label>Alert email<input type="email" value={form.ownerNotificationEmail || ""} onChange={(e) => setField("ownerNotificationEmail", e.target.value)} placeholder="you@yourbusiness.com" /></label>
-          <label>Business phone <span style={{ fontWeight: 400, color: "#94a3b8", fontSize: "0.78rem" }}>(for reference)</span><input value={form.businessPhoneNumber || ""} onChange={(e) => setField("businessPhoneNumber", e.target.value)} placeholder="+13175550100" /></label>
         </div>
 
         <div style={{ height: 1, background: "var(--line)", margin: "8px 0" }} />
@@ -751,16 +767,18 @@ export default function Settings() {
           </label>
         </div>
         <label style={{ marginTop: 14 }}>
-          Your mobile number <span style={{ fontWeight: 400, color: "#94a3b8", fontSize: "0.78rem" }}>(we ring this + send SMS alerts here)</span>
-          <input value={form.ownerNotificationPhone || ""} onChange={(e) => setField("ownerNotificationPhone", e.target.value)} placeholder="+13175550100" />
-          <span style={{ fontSize: "0.74rem", color: "#94a3b8", fontWeight: 400 }}>
-            Defaults to your login number. Must be different from your business number{form.twilioPhoneNumber ? ` (${form.twilioPhoneNumber})` : ""} — that's the line customers call.
-          </span>
+          Your mobile number
+          <span style={{ fontWeight: 400, color: "#94a3b8", fontSize: "0.78rem" }}> — we ring this and send SMS alerts here</span>
+          <input
+            value={form.ownerNotificationPhone || ""}
+            onChange={(e) => setField("ownerNotificationPhone", e.target.value)}
+            onBlur={(e) => setField("ownerNotificationPhone", fmtPhone(e.target.value))}
+            placeholder="(317) 555-0100"
+          />
+          {!form.ownerNotificationPhone && (
+            <span style={{ fontSize: "0.74rem", color: "#b45309", fontWeight: 600 }}>Add your number so we know where to ring you.</span>
+          )}
         </label>
-        <p style={{ margin: "10px 0 0", fontSize: "0.78rem", color: "#94a3b8", lineHeight: 1.5 }}>
-          With <strong>"ring me first,"</strong> we ring your mobile{form.ownerNotificationPhone ? ` (${form.ownerNotificationPhone})` : ""} and ask you to press <strong>1</strong> to take the call. If you don't answer, decline, or it goes to voicemail, the AI receptionist picks up automatically.
-          {!form.ownerNotificationPhone && <span style={{ color: "#b45309" }}> Add your mobile number above so we know where to ring you.</span>}
-        </p>
 
         {(form.callHandlingMode || "ring_first") === "ring_first" && (
           <label style={{ display: "flex", alignItems: "flex-start", gap: 10, marginTop: 12, cursor: "pointer" }}>
