@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, getCache, setCache } from "../api/client.js";
+import { markLeadSeen } from "../utils/seenLeads.js";
 import { Badge } from "../components/Layout.jsx";
 
 function Field({ label, value }) {
@@ -37,6 +38,7 @@ export default function LeadDetail() {
     setLead(data.lead);
     setNotes(data.lead.manualNotes || "");
     setCache(`lead_${id}`, data.lead);
+    markLeadSeen(id);
   }
 
   useEffect(() => {

@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, ArrowRight, CalendarCheck, MessageCircle, Phone, PhoneMissed, TrendingUp, Zap } from "lucide-react";
+import { AlertTriangle, ArrowRight, CalendarCheck, MessageCircle, PhoneMissed, TrendingUp, Zap } from "lucide-react";
 import { api, getCache, setCache } from "../api/client.js";
 import { Badge } from "../components/Layout.jsx";
+import { isLeadNew } from "../utils/seenLeads.js";
 
 function fmt(e164) {
   const d = (e164 || "").replace(/\D/g, "");
@@ -11,107 +12,7 @@ function fmt(e164) {
   return e164;
 }
 
-function PhoneSetupCard({ usage, onAssigned }) {
-  const isPremium = ["pro", "scale"].includes(usage?.plan || "");
-  const [zip, setZip] = useState("");
-  const [searching, setSearching] = useState(false);
-  const [results, setResults] = useState(null);
-  const [selecting, setSelecting] = useState(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [msg, setMsg] = useState("");
-
-  async function searchZip(e) {
-    e.preventDefault(); setMsg(""); setResults(null);
-    if (!/^\d{5}$/.test(zip)) { setMsg("Enter a 5-digit ZIP code."); return; }
-    setSearching(true);
-    try {
-      const data = await api(`/api/business/numbers-by-zip?zip=${zip}`);
-      setResults(data.numbers || []);
-      if (!data.numbers?.length) setMsg(data.hint || "No numbers near that ZIP — try a nearby one.");
-    } catch (err) { setMsg(err.message); }
-    finally { setSearching(false); }
-  }
-
-  async function selectNumber(phoneNumber) {
-    setSelecting(phoneNumber); setMsg("");
-    try {
-      await api("/api/business/select-number", { method: "POST", body: { phoneNumber } });
-      onAssigned(phoneNumber);
-    } catch (err) { setMsg(err.message); }
-    finally { setSelecting(null); }
-  }
-
-  async function checkNow() {
-    setRefreshing(true);
-    try {
-      const u = await api("/api/payments/usage");
-      if (u.twilioPhoneNumber) onAssigned(u.twilioPhoneNumber);
-      else setMsg("Not assigned yet — try again in a moment.");
-    } catch {}
-    finally { setRefreshing(false); }
-  }
-
-  return (
-    <div style={{ background: "#fff", border: "1.5px solid #bfdbfe", borderRadius: 14, padding: "22px 24px", marginBottom: 20 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 12 }}>
-        <div style={{ width: 36, height: 36, borderRadius: 10, background: "#eff6ff", border: "1px solid #bfdbfe", display: "flex", alignItems: "center", justifyContent: "center", color: "#2563eb" }}>
-          <Phone size={17} />
-        </div>
-        <div>
-          <div style={{ fontWeight: 800, fontSize: "0.95rem", color: "#0f172a" }}>Set up your phone number</div>
-          <div style={{ fontSize: "0.77rem", color: "#64748b" }}>This is the number customers call and text</div>
-        </div>
-      </div>
-
-      {isPremium ? (
-        <>
-          <p style={{ margin: "0 0 12px", fontSize: "0.85rem", color: "#374151" }}>
-            Enter a ZIP code near your business to see available local numbers.
-          </p>
-          <form onSubmit={searchZip} style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-            <input
-              value={zip}
-              onChange={(e) => setZip(e.target.value.replace(/\D/g, "").slice(0, 5))}
-              placeholder="ZIP code (e.g. 46201)"
-              maxLength={5}
-              style={{ width: 190, padding: "0.5rem 0.75rem", border: "1px solid #d1d5db", borderRadius: 8, fontSize: "0.9rem" }}
-            />
-            <button className="button" type="submit" disabled={searching}>
-              {searching ? "Searching…" : "Search numbers"}
-            </button>
-          </form>
-          {results && results.length > 0 && (
-            <div style={{ border: "1px solid #e5e7eb", borderRadius: 10, overflow: "hidden", marginBottom: 8 }}>
-              {results.map((n) => (
-                <div key={n.phoneNumber} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 14px", borderBottom: "1px solid #f8fafc" }}>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: "0.95rem" }}>{fmt(n.phoneNumber)}</div>
-                    {n.locality && <div style={{ fontSize: "0.75rem", color: "#9ca3af" }}>{n.locality}, {n.region}</div>}
-                  </div>
-                  <button className="button" onClick={() => selectNumber(n.phoneNumber)} disabled={!!selecting} style={{ fontSize: "0.8rem", padding: "0.35rem 0.9rem" }}>
-                    {selecting === n.phoneNumber ? "Selecting…" : "Choose"}
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </>
-      ) : (
-        <>
-          <p style={{ margin: "0 0 12px", fontSize: "0.85rem", color: "#374151" }}>
-            We're assigning you a local phone number automatically. It usually takes less than a minute.
-          </p>
-          <button className="ghost" onClick={checkNow} disabled={refreshing} style={{ fontSize: "0.83rem" }}>
-            {refreshing ? "Checking…" : "Check now"}
-          </button>
-        </>
-      )}
-      {msg && <p style={{ margin: "10px 0 0", fontSize: "0.82rem", color: msg.startsWith("Not assigned") ? "#b45309" : "#ef4444", fontWeight: 600 }}>{msg}</p>}
-    </div>
-  );
-}
-
-// ── Stat card ────────────────────────────────────────────────────────────────
+// ── Stat card ─────────────────────────────────────────────────────────────────
 function StatCard({ label, value, icon, color }) {
   const colors = {
     blue:   { bg: "#eff6ff", icon: "#2563eb", border: "#bfdbfe" },
@@ -211,7 +112,7 @@ export default function Dashboard() {
 
   if (error) return (
     <div className="page">
-      <h1>Dashboard </h1>
+      <h1>Dashboard</h1>
       <div style={{ padding: "18px 20px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 12, color: "#b91c1c", fontSize: "0.9rem" }}>{error}</div>
     </div>
   );
@@ -230,6 +131,7 @@ export default function Dashboard() {
   );
 
   const hasConversations = data.recentConversations.length > 0;
+  const newCount = data.recentConversations.filter(isLeadNew).length;
 
   return (
     <div className="page">
@@ -254,20 +156,19 @@ export default function Dashboard() {
       {/* Usage strip */}
       <UsagePanel usage={usage} />
 
-      {/* Phone setup — shown until a number is assigned */}
-      {usage && !usage.twilioPhoneNumber && (
-        <PhoneSetupCard
-          usage={usage}
-          onAssigned={(num) => setUsage((prev) => ({ ...prev, twilioPhoneNumber: num }))}
-        />
-      )}
-
-      {/* Recent conversations */}
+      {/* New activity feed */}
       <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 14, overflow: "hidden" }}>
         <div style={{ padding: "18px 24px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: "1rem", fontWeight: 800, color: "#0f172a" }}>Recent conversations</h2>
-            <p style={{ margin: "3px 0 0", fontSize: "0.78rem", color: "#94a3b8" }}>Latest leads and customer interactions</p>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: "1rem", fontWeight: 800, color: "#0f172a" }}>New activity</h2>
+              <p style={{ margin: "3px 0 0", fontSize: "0.78rem", color: "#94a3b8" }}>Calls and messages you haven't reviewed yet</p>
+            </div>
+            {newCount > 0 && (
+              <span style={{ fontSize: "0.7rem", fontWeight: 800, color: "#fff", background: "#16a34a", padding: "2px 9px", borderRadius: 99 }}>
+                {newCount} new
+              </span>
+            )}
           </div>
           <Link to="/leads" style={{ fontSize: "0.8rem", color: "#0f766e", fontWeight: 700, textDecoration: "none", display: "flex", alignItems: "center", gap: 4 }}>
             See all <ArrowRight size={13} />
@@ -277,7 +178,7 @@ export default function Dashboard() {
         {!hasConversations ? (
           <div style={{ padding: "48px 24px", textAlign: "center", color: "#94a3b8" }}>
             <MessageCircle size={36} style={{ margin: "0 auto 12px", opacity: 0.3 }} />
-            <p style={{ margin: 0, fontWeight: 600 }}>No conversations yet</p>
+            <p style={{ margin: 0, fontWeight: 600 }}>No activity yet</p>
             <p style={{ margin: "6px 0 0", fontSize: "0.84rem" }}>Leads will appear here when customers call or text your number</p>
           </div>
         ) : (
@@ -286,23 +187,38 @@ export default function Dashboard() {
               const priorityDot = { emergency: "#ef4444", high: "#f59e0b", normal: "#0f766e", low: "#94a3b8" };
               const dot = priorityDot[lead.priority] || "#94a3b8";
               const lastMsg = lead.messages?.[0];
+              const isNew = isLeadNew(lead);
               return (
                 <Link
                   key={lead.id}
                   to={`/leads/${lead.id}`}
-                  style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 24px", borderBottom: i < data.recentConversations.length - 1 ? "1px solid #f8fafc" : "none", textDecoration: "none", color: "inherit", transition: "background 0.12s" }}
-                  onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"}
-                  onMouseLeave={e => e.currentTarget.style.background = ""}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 14,
+                    padding: "14px 24px",
+                    paddingLeft: isNew ? 21 : 24,
+                    borderLeft: isNew ? "3px solid #16a34a" : "3px solid transparent",
+                    borderBottom: i < data.recentConversations.length - 1 ? "1px solid #f8fafc" : "none",
+                    background: isNew ? "#f0fdf4" : "",
+                    textDecoration: "none", color: "inherit", transition: "background 0.12s"
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = isNew ? "#dcfce7" : "#f8fafc"}
+                  onMouseLeave={e => e.currentTarget.style.background = isNew ? "#f0fdf4" : ""}
                 >
-                  {/* Avatar */}
-                  <div style={{ width: 38, height: 38, borderRadius: "50%", background: "#f1f5f9", border: `2px solid ${dot}40`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontWeight: 800, fontSize: "0.82rem", color: "#475569" }}>
-                    {(lead.customerName || lead.customerPhone || "?")[0].toUpperCase()}
+                  {/* Avatar + new dot */}
+                  <div style={{ position: "relative", flexShrink: 0 }}>
+                    <div style={{ width: 38, height: 38, borderRadius: "50%", background: "#f1f5f9", border: `2px solid ${dot}40`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.82rem", color: "#475569" }}>
+                      {(lead.customerName || lead.customerPhone || "?")[0].toUpperCase()}
+                    </div>
+                    {isNew && (
+                      <span style={{ position: "absolute", top: 0, right: 0, width: 10, height: 10, borderRadius: "50%", background: "#16a34a", border: "2px solid #fff", animation: "pulse-dot 2s ease-in-out infinite" }} />
+                    )}
                   </div>
 
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <span style={{ fontWeight: 700, fontSize: "0.9rem", color: "#0f172a" }}>{lead.customerName || lead.customerPhone}</span>
                       <div style={{ width: 6, height: 6, borderRadius: "50%", background: dot, flexShrink: 0 }} />
+                      {lead.source === "missed_call" ? <span style={{ fontSize: "0.72rem", color: "#64748b" }}>📞 Call</span> : <span style={{ fontSize: "0.72rem", color: "#64748b" }}>💬 SMS</span>}
                     </div>
                     <p style={{ margin: "3px 0 0", color: "#64748b", fontSize: "0.8rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {lead.lastMessage || "No messages yet"}
@@ -310,6 +226,7 @@ export default function Dashboard() {
                   </div>
 
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5, flexShrink: 0 }}>
+                    {isNew && <span style={{ fontSize: "0.65rem", fontWeight: 800, color: "#16a34a", background: "#dcfce7", padding: "1px 7px", borderRadius: 99 }}>NEW</span>}
                     <Badge tone={lead.priority}>{lead.priority}</Badge>
                     {lastMsg && <span style={{ fontSize: "0.72rem", color: "#94a3b8" }}>{timeAgo(lastMsg.createdAt)}</span>}
                   </div>
