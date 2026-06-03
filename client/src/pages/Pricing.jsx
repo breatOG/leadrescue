@@ -121,9 +121,9 @@ function Counter({ target, suffix = "", prefix = "" }) {
 }
 
 const plans = [
-  { name: "Starter", price: 79, tagline: "For solo contractors ready to stop missing leads.", features: ["AI SMS responses", "Up to 100 leads / month", "Lead dashboard", "Email support"], cta: "Get Started", highlight: false },
-  { name: "Pro", price: 199, tagline: "For growing businesses that need voice + SMS.", features: ["AI SMS + Voice calls", "Up to 500 leads / month", "Full dashboard & analytics", "Appointment booking", "Priority support"], cta: "Start Free Trial", highlight: true, badge: "Most Popular" },
-  { name: "Scale", price: 399, tagline: "For multi-location operations at full scale.", features: ["Everything in Pro", "Unlimited leads", "Multiple locations", "API access", "Dedicated account manager"], cta: "Contact Sales", highlight: false },
+  { name: "Starter", price: 79, tagline: "For solo contractors ready to stop missing leads.", features: ["AI SMS responses", "Up to 100 leads / month", "Auto-assigned local number", "Appointment booking", "Lead dashboard", "Email support"], cta: "Get Started", highlight: false },
+  { name: "Pro", price: 199, tagline: "For growing businesses that need voice + SMS.", features: ["AI SMS + Voice calls", "Up to 500 leads / month", "Choose your own local number", "Click-to-call customers", "Full dashboard & analytics", "Appointment booking", "Priority support"], cta: "Start Free Trial", highlight: true, badge: "Most Popular" },
+  { name: "Scale", price: 399, tagline: "For multi-location operations at full scale.", features: ["Everything in Pro", "Unlimited leads", "Choose your own local number", "Multiple locations", "API access", "Dedicated account manager"], cta: "Contact Sales", highlight: false },
 ];
 
 const features = [

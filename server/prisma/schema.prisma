@@ -52,6 +52,7 @@ model User {
   stripeSubscriptionId String?
   subscriptionStatus   String      @default("inactive")
   subscriptionPlan     String?
+  subscriptionRenewsAt DateTime?
   staffBusinessId      String?
   staffBusiness        Business?   @relation("staffMembers", fields: [staffBusinessId], references: [id])
   permissions          String[]    @default([])

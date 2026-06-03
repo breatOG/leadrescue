@@ -7,19 +7,19 @@ const PLAN_FEATURES = {
   starter: {
     label: "Starter",
     color: "#6b7280",
-    features: ["100 leads / month", "SMS conversations", "AI lead qualification", "Email notifications"],
-    missing: ["AI voice calls", "Multiple locations", "API access"]
+    features: ["100 leads / month", "Unlimited SMS conversations", "AI lead qualification", "Auto-assigned local number", "Email & SMS notifications", "Appointment booking"],
+    missing: ["AI voice calls", "Choose your phone number", "Multiple locations", "API access"]
   },
   pro: {
     label: "Pro",
     color: "#2563eb",
-    features: ["500 leads / month", "SMS conversations", "AI voice calls", "AI lead qualification", "Email notifications"],
+    features: ["500 leads / month", "Unlimited SMS conversations", "AI voice calls", "AI lead qualification", "Choose your own local number", "Email & SMS notifications", "Appointment booking", "Click-to-call customers"],
     missing: ["Multiple locations", "API access"]
   },
   scale: {
     label: "Scale",
     color: "#7c3aed",
-    features: ["Unlimited leads", "SMS conversations", "AI voice calls", "AI lead qualification", "Multiple locations", "Email notifications", "API access"],
+    features: ["Unlimited leads", "Unlimited SMS conversations", "AI voice calls", "AI lead qualification", "Choose your own local number", "Multiple locations", "Email & SMS notifications", "Appointment booking", "Click-to-call customers", "API access"],
     missing: []
   }
 };
@@ -48,9 +48,9 @@ function UsageBar({ used, limit, isUnlimited }) {
 }
 
 const PLAN_CARDS = [
-  { key: "starter", label: "Starter", price: 79,  highlights: ["100 leads / mo", "SMS AI"] },
-  { key: "pro",     label: "Pro",     price: 199, highlights: ["500 leads / mo", "SMS + Voice AI"] },
-  { key: "scale",   label: "Scale",   price: 399, highlights: ["Unlimited leads", "Everything"] },
+  { key: "starter", label: "Starter", price: 79,  highlights: ["100 leads / mo", "SMS AI", "Auto number"] },
+  { key: "pro",     label: "Pro",     price: 199, highlights: ["500 leads / mo", "SMS + Voice AI", "Pick your number"] },
+  { key: "scale",   label: "Scale",   price: 399, highlights: ["Unlimited leads", "Everything", "Pick your number"] },
 ];
 
 function SubscriptionPanel() {
@@ -93,12 +93,14 @@ function SubscriptionPanel() {
 
   if (!usage) return null;
 
-  const { plan, subscriptionStatus, leadsThisMonth, leadsLimit } = usage;
+  const { plan, subscriptionStatus, leadsThisMonth, leadsLimit, renewsAt, voice, numberType } = usage;
   const info = PLAN_FEATURES[plan] || PLAN_FEATURES.starter;
   const isUnlimited = !leadsLimit || leadsLimit >= 1e10;
   const pct = isUnlimited ? 0 : (leadsThisMonth / leadsLimit) * 100;
   const remaining = isUnlimited ? null : leadsLimit - leadsThisMonth;
   const statusOk = subscriptionStatus === "active";
+
+  const renewsDate = renewsAt ? new Date(renewsAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : null;
 
   return (
     <div className="panel" style={{ marginBottom: 18 }}>
@@ -106,9 +108,12 @@ function SubscriptionPanel() {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 18 }}>
         <div>
           <h2 style={{ margin: "0 0 6px" }}>Subscription</h2>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <span style={{ background: `${info.color}15`, color: info.color, border: `1px solid ${info.color}35`, borderRadius: 6, padding: "2px 10px", fontSize: "0.78rem", fontWeight: 800, textTransform: "capitalize" }}>{info.label}</span>
-            <span style={{ fontSize: "0.78rem", fontWeight: 700, color: statusOk ? "#16a34a" : "#ef4444" }}>{statusOk ? "Active" : subscriptionStatus}</span>
+            <span style={{ fontSize: "0.78rem", fontWeight: 700, color: statusOk ? "#16a34a" : "#ef4444" }}>{statusOk ? "Active" : subscriptionStatus === "past_due" ? "Past due" : "Inactive"}</span>
+            {renewsDate && statusOk && (
+              <span style={{ fontSize: "0.75rem", color: "#64748b" }}>Renews {renewsDate}</span>
+            )}
           </div>
         </div>
         <button className="ghost" onClick={openPortal} disabled={portalLoading} style={{ fontSize: "0.82rem", display: "flex", alignItems: "center", gap: 5 }}>
@@ -122,30 +127,49 @@ function SubscriptionPanel() {
         </div>
       )}
 
-      {/* Usage */}
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "0.82rem", fontWeight: 600, color: "#374151", marginBottom: 6 }}>
-          <span>Leads this month</span>
-          <span style={{ color: "#64748b", fontWeight: 400 }}>{isUnlimited ? "Unlimited" : `${leadsThisMonth} / ${leadsLimit}`}</span>
+      {/* Usage grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 20 }}>
+        {/* Leads */}
+        <div style={{ background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 14px" }}>
+          <div style={{ fontSize: "0.74rem", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Leads this month</div>
+          <div style={{ fontSize: "1.3rem", fontWeight: 900, color: "#0f172a" }}>
+            {leadsThisMonth}<span style={{ fontSize: "0.8rem", fontWeight: 500, color: "#94a3b8" }}>{isUnlimited ? "" : ` / ${leadsLimit}`}</span>
+          </div>
+          <UsageBar used={leadsThisMonth} limit={leadsLimit} isUnlimited={isUnlimited} />
+          {!isUnlimited && pct >= 70 && (
+            <p style={{ margin: "4px 0 0", fontSize: "0.76rem", color: pct >= 100 ? "#ef4444" : "#b45309", fontWeight: 600 }}>
+              {pct >= 100 ? "Limit reached" : `${remaining} remaining`}
+            </p>
+          )}
         </div>
-        <UsageBar used={leadsThisMonth} limit={leadsLimit} isUnlimited={isUnlimited} />
-        {!isUnlimited && pct >= 70 && (
-          <p style={{ margin: "5px 0 0", fontSize: "0.79rem", color: pct >= 100 ? "#ef4444" : "#b45309", fontWeight: 600 }}>
-            {pct >= 100 ? "Limit reached — switch to a higher plan below" : `${remaining} lead${remaining === 1 ? "" : "s"} remaining`}
-          </p>
-        )}
+
+        {/* Limits summary */}
+        <div style={{ background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ fontSize: "0.74rem", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>Plan limits</div>
+          {[
+            { label: "SMS conversations", ok: true },
+            { label: "AI voice calls", ok: !!voice },
+            { label: numberType === "choose" ? "Choose your number" : "Auto-assigned number", ok: true },
+            { label: "Appointment booking", ok: true },
+          ].map(({ label, ok }) => (
+            <div key={label} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.79rem", color: ok ? "#374151" : "#cbd5e1" }}>
+              <CheckCircle size={11} style={{ flexShrink: 0, color: ok ? "#16a34a" : "#d1d5db" }} />
+              {label}
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Included features */}
-      <div className="m-2col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 20px", marginBottom: 22 }}>
+      <div className="m-2col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "5px 20px", marginBottom: 22 }}>
         {info.features.map((f) => (
-          <div key={f} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: "0.82rem", color: "#16a34a" }}>
-            <CheckCircle size={13} style={{ flexShrink: 0 }} />{f}
+          <div key={f} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: "0.8rem", color: "#16a34a" }}>
+            <CheckCircle size={12} style={{ flexShrink: 0 }} />{f}
           </div>
         ))}
         {info.missing.map((f) => (
-          <div key={f} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: "0.82rem", color: "#cbd5e1" }}>
-            <CheckCircle size={13} style={{ flexShrink: 0, opacity: 0.4 }} />{f}
+          <div key={f} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: "0.8rem", color: "#cbd5e1" }}>
+            <CheckCircle size={12} style={{ flexShrink: 0, opacity: 0.35 }} />{f}
           </div>
         ))}
       </div>
@@ -178,7 +202,10 @@ function SubscriptionPanel() {
       </div>
 
       {msg && <p style={{ marginTop: 12, fontSize: "0.83rem", color: msgOk ? "#16a34a" : "#ef4444", fontWeight: 600 }}>{msg}</p>}
-      <p style={{ marginTop: 12, fontSize: "0.76rem", color: "#94a3b8" }}>Plans switch immediately with proration. To update payment method or cancel, use the billing portal.</p>
+      <p style={{ marginTop: 12, fontSize: "0.76rem", color: "#94a3b8" }}>
+        Plans switch immediately with proration. To update your payment method or cancel, use the billing portal.
+        {renewsDate && statusOk && ` Your subscription auto-renews on ${renewsDate}.`}
+      </p>
     </div>
   );
 }

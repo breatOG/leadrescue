@@ -3,7 +3,7 @@ import Stripe from "stripe";
 import asyncHandler from "express-async-handler";
 import { requireAuth } from "../middleware/auth.js";
 import { prisma } from "../prisma/client.js";
-import { sendRenewalReminderEmail } from "../services/emailService.js";
+import { sendRenewalReminderEmail, sendRenewalConfirmationEmail } from "../services/emailService.js";
 import { provisionNumberForBusiness, poolNumberFromUser } from "../services/phoneProvisioningService.js";
 
 const router = express.Router();
@@ -229,10 +229,12 @@ router.get(
       plan,
       planLabel: limits.label,
       subscriptionStatus: req.user.subscriptionStatus,
+      renewsAt: req.user.subscriptionRenewsAt || null,
       leadsThisMonth,
       leadsLimit: limits.leadsPerMonth,
       voice: limits.voice,
-      locations: limits.locations
+      locations: limits.locations,
+      numberType: ["pro","scale"].includes(plan) ? "choose" : "auto"
     });
   })
 );
@@ -277,16 +279,48 @@ router.post(
         }
         break;
       }
-      case "customer.subscription.deleted":
-      case "customer.subscription.paused": {
+      case "customer.subscription.deleted": {
+        // Subscription has fully ended (cancel_at_period_end reached its end date).
+        // Only now do we recycle the number — NOT when they first clicked "cancel".
         const sub = event.data.object;
         const affected = await prisma.user.findMany({ where: { stripeSubscriptionId: sub.id }, select: { id: true } });
         await prisma.user.updateMany({
           where: { stripeSubscriptionId: sub.id },
+          data: { subscriptionStatus: "inactive", subscriptionRenewsAt: null }
+        });
+        for (const u of affected) poolNumberFromUser(u.id).catch(() => {});
+        console.log(`[stripe] Subscription ended and number recycled: ${sub.id}`);
+        break;
+      }
+      case "customer.subscription.paused": {
+        // Paused (e.g. dunning) — mark status but do NOT recycle the number yet.
+        const sub = event.data.object;
+        await prisma.user.updateMany({
+          where: { stripeSubscriptionId: sub.id },
           data: { subscriptionStatus: "inactive" }
         });
-        for (const u of affected) poolNumberFromUser(u.id).catch(() => {}); // recycle numbers async
-        console.log(`[stripe] Subscription deactivated: ${sub.id}`);
+        console.log(`[stripe] Subscription paused (number kept): ${sub.id}`);
+        break;
+      }
+      case "invoice.payment_succeeded": {
+        // Fires on every successful charge — first payment AND renewals.
+        const invoice = event.data.object;
+        if (!invoice.subscription || invoice.billing_reason === "subscription_create") break; // skip initial payment
+        const renewedUser = await prisma.user.findFirst({ where: { stripeSubscriptionId: invoice.subscription } });
+        if (!renewedUser) break;
+        const nextRenewal = new Date(invoice.period_end * 1000);
+        await prisma.user.update({
+          where: { id: renewedUser.id },
+          data: { subscriptionStatus: "active", subscriptionRenewsAt: nextRenewal }
+        });
+        await sendRenewalConfirmationEmail({
+          to: renewedUser.email,
+          name: renewedUser.name,
+          renewalDate: nextRenewal,
+          plan: renewedUser.subscriptionPlan,
+          amountCents: invoice.amount_paid
+        }).catch((e) => console.error("[stripe] Renewal confirmation email failed:", e.message));
+        console.log(`[stripe] Subscription renewed for ${renewedUser.email} until ${nextRenewal.toISOString()}`);
         break;
       }
       case "invoice.payment_failed": {
@@ -304,7 +338,6 @@ router.post(
         const sub = event.data.object;
         const status = sub.status === "active" ? "active" : sub.status === "past_due" ? "past_due" : "inactive";
 
-        // Map price ID back to plan name so upgrades/downgrades sync correctly
         const priceId = sub.items?.data?.[0]?.price?.id;
         const planByPrice = {
           [process.env.STRIPE_PRICE_STARTER]: "starter",
@@ -312,10 +345,15 @@ router.post(
           [process.env.STRIPE_PRICE_SCALE]: "scale"
         };
         const newPlan = priceId ? (planByPrice[priceId] || null) : null;
+        const renewsAt = sub.current_period_end ? new Date(sub.current_period_end * 1000) : undefined;
 
         await prisma.user.updateMany({
           where: { stripeSubscriptionId: sub.id },
-          data: { subscriptionStatus: status, ...(newPlan ? { subscriptionPlan: newPlan } : {}) }
+          data: {
+            subscriptionStatus: status,
+            ...(newPlan ? { subscriptionPlan: newPlan } : {}),
+            ...(renewsAt ? { subscriptionRenewsAt: renewsAt } : {})
+          }
         });
         console.log(`[stripe] Subscription updated: ${sub.id} → status=${status}${newPlan ? ` plan=${newPlan}` : ""}`);
         break;
