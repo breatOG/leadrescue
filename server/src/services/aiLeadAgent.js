@@ -259,3 +259,53 @@ export async function runAiLeadAgent({ business, lead, messages }) {
 
   return JSON.parse(completion.choices[0].message.content);
 }
+
+// Analyze a recorded call transcript to extract lead fields and detect appointments.
+// Used by Watch Mode after the owner answers a call and the recording is transcribed.
+export async function analyzeCallTranscript({ business, lead, transcript, availableSlots = [] }) {
+  if (!process.env.OPENAI_API_KEY || !transcript) return null;
+
+  const tz = process.env.BUSINESS_TIMEZONE || "America/Indiana/Indianapolis";
+  const slotText = availableSlots.slice(0, 6).map((s, i) =>
+    `${i}: ${new Date(s.startAt).toLocaleString("en-US", { timeZone: tz, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true })}`
+  ).join("\n");
+
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    response_format: { type: "json_object" },
+    messages: [{
+      role: "system",
+      content: `You are analyzing a recorded phone call between a contractor (${business.name}) and a customer.
+Extract every piece of information clearly stated. If an appointment was agreed on, match it to the closest available slot index below.
+
+Available slots (index: datetime):
+${slotText || "none"}
+
+Return JSON:
+{
+  "customerName": null,
+  "jobType": null,
+  "issueDescription": null,
+  "urgency": null,
+  "address": null,
+  "zipCode": null,
+  "appointmentSlotIndex": null,
+  "appointmentMentioned": false,
+  "contractorSummary": "1-2 sentence summary for the contractor",
+  "leadPriority": "normal"
+}`
+    }, {
+      role: "user",
+      content: `Call transcript:\n\n${transcript.slice(0, 4000)}`
+    }],
+    max_tokens: 350,
+    temperature: 0.3
+  });
+
+  try {
+    return JSON.parse(completion.choices[0].message.content);
+  } catch {
+    return null;
+  }
+}

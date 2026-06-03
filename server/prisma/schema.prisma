@@ -108,6 +108,8 @@ model Business {
   ringSeconds            Int                    @default(15)
   afterHoursRing         Boolean                @default(false)
   ringNumbers            String[]               @default([])
+  watchMode              Boolean                @default(false)
+  smsChoiceMode          Boolean                @default(false)
   smsStatus              String                 @default("not_started")
   twilioMsgServiceSid    String?
   twilioBrandSid         String?

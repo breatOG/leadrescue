@@ -808,6 +808,8 @@ export default function Settings() {
         ringSeconds: Number(form.ringSeconds) || 15,
         afterHoursRing: Boolean(form.afterHoursRing),
         ringNumbers: (form.ringNumbersText || "").split(",").map((n) => n.trim()).filter(Boolean),
+        watchMode: Boolean(form.watchMode),
+        smsChoiceMode: Boolean(form.smsChoiceMode),
         serviceAreas: form.serviceAreasText.split(",").map((item) => item.trim()).filter(Boolean),
         serviceTypes: form.serviceTypesText.split(",").map((item) => item.trim()).filter(Boolean),
         businessHours: form.businessHours,
@@ -936,6 +938,49 @@ export default function Settings() {
             <input value={form.ringNumbersText || ""} onChange={(e) => setField("ringNumbersText", e.target.value)} placeholder="+13175550111, +13175550222" />
             <span style={{ fontSize: "0.74rem", color: "#94a3b8", fontWeight: 400 }}>Comma-separated. We ring everyone at once — whoever answers and presses 1 gets the call.</span>
           </label>
+        )}
+
+        {/* Watch Mode + SMS Choice Mode — Pro/Scale only */}
+        {["pro","scale"].includes((getUser()?.subscriptionPlan || "").toLowerCase()) && (
+          <>
+            <div style={{ height: 1, background: "var(--line)", margin: "16px 0 12px" }} />
+            <div style={{ marginBottom: 10 }}>
+              <h2 style={{ margin: "0 0 4px", fontSize: "1rem" }}>AI Automation (Pro/Scale)</h2>
+              <p style={{ margin: 0, fontSize: "0.8rem", color: "#94a3b8" }}>Advanced features that keep the AI in the loop even when you handle things manually.</p>
+            </div>
+
+            {/* Watch Mode */}
+            <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", marginBottom: 12 }}>
+              <input
+                type="checkbox"
+                checked={Boolean(form.watchMode)}
+                onChange={(e) => setField("watchMode", e.target.checked)}
+                style={{ width: 16, height: 16, marginTop: 2, accentColor: "var(--accent)", flexShrink: 0 }}
+              />
+              <span style={{ fontSize: "0.85rem", color: "#374151", fontWeight: 600 }}>
+                Watch Mode — record calls you answer
+                <span style={{ display: "block", fontSize: "0.78rem", color: "#94a3b8", fontWeight: 400, marginTop: 2 }}>
+                  When you pick up a customer call, it gets recorded. After the call, the AI transcribes it, fills in the lead details, and books any appointment you agreed to — automatically.
+                </span>
+              </span>
+            </label>
+
+            {/* SMS Choice Mode */}
+            <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={Boolean(form.smsChoiceMode)}
+                onChange={(e) => setField("smsChoiceMode", e.target.checked)}
+                style={{ width: 16, height: 16, marginTop: 2, accentColor: "var(--accent)", flexShrink: 0 }}
+              />
+              <span style={{ fontSize: "0.85rem", color: "#374151", fontWeight: 600 }}>
+                SMS Choice Mode — decide who replies to each text
+                <span style={{ display: "block", fontSize: "0.78rem", color: "#94a3b8", fontWeight: 400, marginTop: 2 }}>
+                  When a customer texts, you get a notification on your phone: "Reply AI to let the assistant respond, or reply with your message to send it directly." No app needed — just reply from your regular texts.
+                </span>
+              </span>
+            </label>
+          </>
         )}
 
         <div style={{ height: 1, background: "var(--line)", margin: "12px 0 8px" }} />

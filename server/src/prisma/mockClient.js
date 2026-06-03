@@ -35,6 +35,8 @@ const business = {
   ringSeconds: 15,
   afterHoursRing: false,
   ringNumbers: [],
+  watchMode: false,
+  smsChoiceMode: false,
   serviceAreas: ["Indianapolis", "Carmel", "Fishers"],
   businessHours: {
     monday: "8:00 AM - 5:00 PM",

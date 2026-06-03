@@ -60,6 +60,8 @@ router.put(
       ringSeconds,
       afterHoursRing,
       ringNumbers,
+      watchMode,
+      smsChoiceMode,
       availability
     } = req.body;
 
@@ -80,6 +82,8 @@ router.put(
         ...(callHandlingMode !== undefined ? { callHandlingMode } : {}),
         ...(ringSeconds !== undefined ? { ringSeconds: Number(ringSeconds) || 15 } : {}),
         ...(afterHoursRing !== undefined ? { afterHoursRing: Boolean(afterHoursRing) } : {}),
+        ...(watchMode !== undefined ? { watchMode: Boolean(watchMode) } : {}),
+        ...(smsChoiceMode !== undefined ? { smsChoiceMode: Boolean(smsChoiceMode) } : {}),
         ...(ringNumbers !== undefined
           ? { ringNumbers: (Array.isArray(ringNumbers) ? ringNumbers : []).map((n) => String(n).trim()).filter(Boolean) }
           : {}),

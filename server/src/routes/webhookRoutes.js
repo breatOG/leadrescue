@@ -3,7 +3,7 @@ import asyncHandler from "express-async-handler";
 import crypto from "crypto";
 import OpenAI from "openai";
 import { prisma } from "../prisma/client.js";
-import { runAiLeadAgent, runVoiceAiTurn } from "../services/aiLeadAgent.js";
+import { runAiLeadAgent, runVoiceAiTurn, analyzeCallTranscript } from "../services/aiLeadAgent.js";
 import { bookAppointment, getAvailableSlots } from "../services/schedulingService.js";
 import { notifyContractor } from "../services/notificationService.js";
 import { sendSms } from "../services/twilioService.js";
@@ -12,6 +12,10 @@ import { PLAN_LIMITS } from "./paymentRoutes.js";
 
 // In-memory TTS audio cache: id -> { buffer, createdAt }
 const ttsCache = new Map();
+
+// SMS Choice Mode: tracks which lead the owner was last notified about per business.
+// businessId -> { leadId, customerPhone, notifiedAt }
+const ownerControlMap = new Map();
 setInterval(() => {
   const cutoff = Date.now() - 5 * 60 * 1000;
   for (const [id, entry] of ttsCache) {
@@ -168,13 +172,13 @@ router.post(
     await saveWebhook({ businessId: business.id, eventType: "sms", payload: req.body });
 
     let lead = await findOrCreateLead({ business, from: req.body.From, source: "sms" });
-    const fromPhone = business.twilioPhoneNumber || process.env.TWILIO_PHONE_NUMBER;
+    const twilioFrom = business.twilioPhoneNumber || process.env.TWILIO_PHONE_NUMBER;
 
     if (!lead) {
       try {
         await sendSms({
           to: req.body.From,
-          from: fromPhone,
+          from: twilioFrom,
           body: `Thanks for reaching out to ${business.name}! We're currently at capacity for new inquiries this month. Please call us directly or reach out again next month.`
         });
       } catch (err) {
@@ -184,6 +188,40 @@ router.post(
     }
 
     const inboundBody = String(req.body.Body || "").trim();
+    const fromPhone = req.body.From;
+    const ownerPhone = (business.ownerNotificationPhone || business.businessPhoneNumber || "").trim();
+
+    // SMS Choice Mode: if the incoming message is FROM the owner, treat it as a control command.
+    // Owner can reply "AI" to hand back to the AI, or reply with their own message to forward it.
+    if (business.smsChoiceMode && ownerPhone && fromPhone === ownerPhone) {
+      const pending = ownerControlMap.get(business.id);
+      if (pending) {
+        const pendingLead = await prisma.lead.findUnique({ where: { id: pending.leadId } });
+        if (pendingLead) {
+          const cmd = inboundBody.toUpperCase();
+          if (cmd === "AI" || cmd === "YES") {
+            // Hand back to AI — it will respond on the next tick
+            await prisma.lead.update({ where: { id: pending.leadId }, data: { handoffMode: "ai" } });
+            // Trigger AI response now
+            const messages = await prisma.message.findMany({ where: { leadId: pending.leadId }, orderBy: { createdAt: "asc" } });
+            const slots = await getAvailableSlots(business.id);
+            const aiResult = await runAiLeadAgent({ business, lead: pendingLead, messages, slots }).catch(() => null);
+            if (aiResult?.nextMessageToCustomer) {
+              const sent = await sendSms({ to: pending.customerPhone, from: business.twilioPhoneNumber || process.env.TWILIO_PHONE_NUMBER, body: aiResult.nextMessageToCustomer });
+              await prisma.message.create({ data: { leadId: pending.leadId, direction: "outbound", channel: "sms", body: aiResult.nextMessageToCustomer, twilioSid: sent?.sid } });
+              await prisma.lead.update({ where: { id: pending.leadId }, data: { lastMessage: aiResult.nextMessageToCustomer } });
+            }
+          } else {
+            // Forward owner's message directly to customer
+            const sent = await sendSms({ to: pending.customerPhone, from: business.twilioPhoneNumber || process.env.TWILIO_PHONE_NUMBER, body: inboundBody });
+            await prisma.message.create({ data: { leadId: pending.leadId, direction: "outbound", channel: "sms", body: inboundBody, twilioSid: sent?.sid } });
+            await prisma.lead.update({ where: { id: pending.leadId }, data: { handoffMode: "human", lastMessage: inboundBody } });
+          }
+          ownerControlMap.delete(business.id);
+        }
+      }
+      return res.type("text/xml").send("<Response></Response>");
+    }
 
     await prisma.message.create({
       data: { leadId: lead.id, direction: "inbound", channel: "sms", body: inboundBody, twilioSid: req.body.MessageSid }
@@ -197,6 +235,20 @@ router.post(
     if (lead.handoffMode === "human") {
       notifyContractor({ business, lead, summary: `New customer text: "${inboundBody.slice(0, 140)}"` })
         .catch((e) => console.error("[sms] human-mode notify failed:", e.message));
+      return res.type("text/xml").send("<Response></Response>");
+    }
+
+    // SMS Choice Mode: notify the owner and pause AI until they decide
+    if (business.smsChoiceMode && ownerPhone && lead.handoffMode !== "human") {
+      ownerControlMap.set(business.id, { leadId: lead.id, customerPhone: lead.customerPhone, notifiedAt: Date.now() });
+      await prisma.lead.update({ where: { id: lead.id }, data: { handoffMode: "human" } });
+      const preview = inboundBody.length > 100 ? inboundBody.slice(0, 100) + "…" : inboundBody;
+      const name = lead.customerName || lead.customerPhone;
+      await sendSms({
+        to: ownerPhone,
+        from: business.twilioPhoneNumber || process.env.TWILIO_PHONE_NUMBER,
+        body: `LeadRescue: ${name} texted: "${preview}"\n\nReply AI to let the assistant respond, or reply with your own message to send it directly.`
+      }).catch((e) => console.error("[sms] choice-mode notify failed:", e.message));
       return res.type("text/xml").send("<Response></Response>");
     }
 
@@ -411,10 +463,13 @@ router.post(
       await prisma.lead
         .update({ where: { id: lead.id }, data: { lastMessage: "Incoming call — ringing the team" } })
         .catch(() => {});
+      const recordAttr = business.watchMode
+        ? `record="record-from-answer-dual-channel" recordingStatusCallback="/webhooks/twilio/recording-complete?leadId=${lead.id}&amp;businessId=${business.id}" recordingStatusCallbackMethod="POST"`
+        : "";
       return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="Google.en-US-Neural2-F">Thanks for calling ${esc(business.name)}. Connecting you now.</Say>
-  <Dial timeout="${ringSeconds}" answerOnBridge="true" action="/webhooks/twilio/after-dial?${q}" method="POST">
+  <Dial timeout="${ringSeconds}" answerOnBridge="true" action="/webhooks/twilio/after-dial?${q}" method="POST" ${recordAttr}>
     ${numbersXml}
   </Dial>
 </Response>`);
@@ -640,6 +695,82 @@ router.post(
     <Number>${esc(to)}</Number>
   </Dial>
 </Response>`);
+  })
+);
+
+// Watch Mode: fired by Twilio when a dual-channel recording is ready.
+// Transcribes the call with Whisper, runs AI analysis, updates the lead.
+router.post(
+  "/twilio/recording-complete",
+  asyncHandler(async (req, res) => {
+    res.sendStatus(200); // respond immediately so Twilio doesn't retry
+
+    const { leadId, businessId } = req.query;
+    const recordingUrl = req.body.RecordingUrl;
+    const status = req.body.RecordingStatus;
+
+    if (status !== "completed" || !recordingUrl || !leadId || !businessId) return;
+    if (!process.env.OPENAI_API_KEY) return;
+
+    try {
+      const [lead, business] = await Promise.all([
+        prisma.lead.findUnique({ where: { id: leadId } }),
+        prisma.business.findUnique({ where: { id: businessId }, include: { serviceTypes: true } })
+      ]);
+      if (!lead || !business) return;
+
+      // Fetch recording audio from Twilio (requires Basic Auth)
+      const auth = Buffer.from(`${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`).toString("base64");
+      const audioRes = await fetch(`${recordingUrl}.mp3`, { headers: { Authorization: `Basic ${auth}` } });
+      if (!audioRes.ok) { console.error("[watch] Could not fetch recording:", audioRes.status); return; }
+      const audioBuffer = Buffer.from(await audioRes.arrayBuffer());
+
+      // Transcribe with OpenAI Whisper
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const { File } = await import("node:buffer");
+      const audioFile = new globalThis.File([audioBuffer], "call.mp3", { type: "audio/mpeg" });
+      const transcription = await openai.audio.transcriptions.create({ file: audioFile, model: "whisper-1" });
+      const transcript = transcription.text;
+
+      if (!transcript?.trim()) return;
+
+      // Save transcript as a message
+      await prisma.message.create({
+        data: { leadId, direction: "inbound", channel: "voice", body: `[Call transcript — Watch Mode]\n\n${transcript}` }
+      });
+
+      // AI analysis to extract lead fields + detect appointment
+      const slots = await getAvailableSlots(businessId);
+      const analysis = await analyzeCallTranscript({ business, lead, transcript, availableSlots: slots });
+      if (!analysis) return;
+
+      const update = {};
+      if (analysis.customerName && !lead.customerName) update.customerName = analysis.customerName;
+      if (analysis.jobType && !lead.jobType) update.jobType = analysis.jobType;
+      if (analysis.issueDescription && !lead.issueDescription) update.issueDescription = analysis.issueDescription;
+      if (analysis.urgency && !lead.urgency) update.urgency = analysis.urgency;
+      if (analysis.address && !lead.address) update.address = analysis.address;
+      if (analysis.zipCode && !lead.zipCode) update.zipCode = analysis.zipCode;
+      if (analysis.contractorSummary) update.aiSummary = analysis.contractorSummary;
+      if (analysis.leadPriority) update.priority = analysis.leadPriority;
+      update.status = "qualified";
+
+      await prisma.lead.update({ where: { id: leadId }, data: update });
+
+      // Auto-book appointment if the call analysis matched a slot
+      if (analysis.appointmentSlotIndex != null && slots[analysis.appointmentSlotIndex]) {
+        const slot = slots[analysis.appointmentSlotIndex];
+        const existing = await prisma.appointment.findFirst({ where: { leadId, status: "booked" } });
+        if (!existing) {
+          await bookAppointment({ businessId, leadId, startAt: slot.startAt, notes: "Auto-booked from Watch Mode call recording." });
+          console.log(`[watch] Appointment booked from recorded call for lead ${leadId}`);
+        }
+      }
+
+      console.log(`[watch] Recording analyzed for lead ${leadId}`);
+    } catch (err) {
+      console.error("[watch] Recording processing error:", err.message);
+    }
   })
 );
 
