@@ -110,7 +110,7 @@ const s = {
   page: { minHeight: "100vh", background: "#f8fafc", fontFamily: "'Inter', system-ui, sans-serif" },
   header: { padding: "1.25rem 2.5rem", background: "#fff", borderBottom: "1px solid #f1f5f9" },
   logo: { display: "flex", alignItems: "center", gap: "0.5rem" },
-  logoMark: { width: 32, height: 32, borderRadius: 8, objectFit: "cover", display: "block" },
+  logoMark: { width: 44, height: 44, borderRadius: 11, objectFit: "cover", objectPosition: "center", display: "block" },
   logoText: { fontWeight: 800, fontSize: "1.1rem", color: DARK },
   content: { maxWidth: 960, margin: "0 auto", padding: "4rem 2rem" },
   textCenter: { textAlign: "center", marginBottom: "3rem" },

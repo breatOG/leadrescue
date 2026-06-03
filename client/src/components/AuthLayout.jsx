@@ -13,7 +13,7 @@ export default function AuthLayout({ eyebrow, title, subtitle, children, footer 
     <div className="auth-split">
       <aside className="auth-aside">
         <Link to="/" className="brand">
-          <span className="brand-mark">LR</span> LeadRescue
+          <img src="/logo.png" alt="LeadRescue" className="brand-mark" /> LeadRescue
         </Link>
 
         <div>
@@ -38,7 +38,7 @@ export default function AuthLayout({ eyebrow, title, subtitle, children, footer 
       <main className="auth-main">
         <div className="auth-box">
           <Link to="/" className="brand">
-            <span className="brand-mark">LR</span> LeadRescue
+            <img src="/logo.png" alt="LeadRescue" className="brand-mark" /> LeadRescue
           </Link>
           {eyebrow && <p className="auth-eyebrow">{eyebrow}</p>}
           <h1 className="auth-title">{title}</h1>
