@@ -1,57 +1,51 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
     <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#0e8070"/>
-      <stop offset="100%" stop-color="#065048"/>
+      <stop offset="0%" stop-color="#0d7a6c"/>
+      <stop offset="100%" stop-color="#074d42"/>
     </linearGradient>
   </defs>
 
-  <!-- Background rounded square -->
-  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <!-- Background -->
+  <rect width="512" height="512" rx="88" fill="url(#bg)"/>
 
-  <!-- LR drop shadow -->
-  <text x="259" y="357"
-    text-anchor="middle"
-    font-family="'Arial Black', 'Impact', Arial, sans-serif"
-    font-size="270"
-    font-weight="900"
-    fill="rgba(0,0,0,0.3)"
-    letter-spacing="-20">LR</text>
+  <!-- ── L LETTER ── -->
+  <!-- vertical bar -->
+  <rect x="66" y="92" width="74" height="322" rx="8" fill="white"/>
+  <!-- horizontal bar -->
+  <rect x="66" y="340" width="204" height="74" rx="8" fill="white"/>
 
-  <!-- LR white letters -->
-  <text x="254" y="351"
-    text-anchor="middle"
-    font-family="'Arial Black', 'Impact', Arial, sans-serif"
-    font-size="270"
-    font-weight="900"
-    fill="white"
-    letter-spacing="-20">LR</text>
+  <!-- ── R LETTER ── -->
+  <!-- vertical bar -->
+  <rect x="284" y="92" width="74" height="322" rx="8" fill="white"/>
+  <!-- bowl  (outer D minus inner cutout — same center, sharing the vertical-bar edge) -->
+  <!-- center=(358,190), outer rx=122 ry=98, inner rx=60 ry=46 -->
+  <path d="M 358 92 A 122 98 0 0 1 358 288 L 358 236 A 60 46 0 0 0 358 144 Z" fill="white"/>
+  <!-- diagonal leg -->
+  <line x1="368" y1="278" x2="454" y2="414" stroke="white" stroke-width="74" stroke-linecap="round"/>
 
-  <!-- Speech bubble — sits upper-right, tail points toward the R -->
+  <!-- ── SPEECH BUBBLE (upper-right, tail toward R) ── -->
+  <!-- Full closed path: rounded-rect body + downward tail -->
   <path d="
-    M 338 32
-    Q 318 32 318 52
-    L 318 190
-    Q 318 210 338 210
-    L 347 210
-    L 338 237
-    L 364 210
-    L 476 210
-    Q 496 210 496 190
-    L 496 52
-    Q 496 32 476 32
+    M 368 26
+    Q 350 26 350 44
+    L 350 142
+    Q 350 160 368 160
+    L 378 160
+    L 370 186
+    L 394 160
+    L 484 160
+    Q 502 160 502 142
+    L 502 44
+    Q 502 26 484 26
     Z
-  " fill="none" stroke="#7de8d5" stroke-width="17" stroke-linejoin="round"/>
+  " fill="none" stroke="#6de4d0" stroke-width="17" stroke-linejoin="round"/>
+  <!-- three dots -->
+  <circle cx="388" cy="94" r="13" fill="#6de4d0"/>
+  <circle cx="426" cy="94" r="13" fill="#6de4d0"/>
+  <circle cx="464" cy="94" r="13" fill="#6de4d0"/>
 
-  <!-- Three dots inside bubble -->
-  <circle cx="357" cy="124" r="14" fill="#7de8d5"/>
-  <circle cx="407" cy="124" r="14" fill="#7de8d5"/>
-  <circle cx="457" cy="124" r="14" fill="#7de8d5"/>
-
-  <!-- Swoosh arc below LR -->
-  <path d="M 44 420 Q 256 482 466 392"
-    fill="none"
-    stroke="#7de8d5"
-    stroke-width="17"
-    stroke-linecap="round"/>
+  <!-- ── SWOOSH arc below letters ── -->
+  <path d="M 48 428 Q 256 490 460 400"
+    fill="none" stroke="#6de4d0" stroke-width="17" stroke-linecap="round"/>
 </svg>
