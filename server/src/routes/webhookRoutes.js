@@ -718,7 +718,48 @@ router.post(
         }
       } catch (e) {
         console.error("[voice] Appointment booking failed:", e.message);
+        const remaining = await getAvailableSlots(business.id);
+        const tz = process.env.BUSINESS_TIMEZONE || "America/Indiana/Indianapolis";
+        const alternatives = remaining.slice(0, 3).map((slot) =>
+          new Date(slot.startAt).toLocaleString("en-US", {
+            timeZone: tz,
+            weekday: "short",
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true
+          })
+        );
+        aiReply = alternatives.length
+          ? `Shoot, that time is not available anymore. I can do ${alternatives.join(", or ")}. Which one works best?`
+          : "Shoot, that time is not available anymore, and I am not seeing another opening right now. The team will call you back to find a time that works.";
+        done = false;
+        await prisma.message.create({
+          data: { leadId: lead.id, direction: "outbound", channel: "voice", body: aiReply }
+        });
+        await prisma.lead.update({ where: { id: lead.id }, data: { lastMessage: aiReply, status: "qualified" } });
       }
+    } else if (bookedSlotIndex != null) {
+      const alternatives = (voiceSlots || []).slice(0, 3).map((slot) =>
+        new Date(slot.startAt).toLocaleString("en-US", {
+          timeZone: process.env.BUSINESS_TIMEZONE || "America/Indiana/Indianapolis",
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true
+        })
+      );
+      aiReply = alternatives.length
+        ? `That time is not available. I can do ${alternatives.join(", or ")}. Which one works best?`
+        : "That time is not available, and I am not seeing another opening right now. The team will call you back to find a time that works.";
+      done = false;
+      await prisma.message.create({
+        data: { leadId: lead.id, direction: "outbound", channel: "voice", body: aiReply }
+      });
+      await prisma.lead.update({ where: { id: lead.id }, data: { lastMessage: aiReply, status: "qualified" } });
     }
 
     if (done) {

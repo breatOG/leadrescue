@@ -43,7 +43,11 @@ export async function runVoiceAiTurn({ business, lead, messages, slots = [], app
     : `SCHEDULING:
 - Time is ${timeStr}. Don't offer slots that have already passed.
 - "Not urgent" or "flexible"? Offer a slot a few days out, not today.
-- Only offer times from the list below. If none work, say the team will call back to nail down a time.
+- Only offer times from the list below.
+- If the caller asks for a time that is not exactly in the open slots list, say that time is not available and offer two or three open slots from the list.
+- Never say the team will finalize, confirm later, or reach out to confirm a requested time when open slots are listed.
+- Do not set bookedSlotIndex unless the caller clearly agrees to one of the exact open slots below.
+- If no open slots exist, say there are no openings showing right now and the team will call back to find a time.
 - Open slots: ${slotText || "none configured yet — tell them someone will call back to schedule"}`;
 
   const system = `You are Jamie, a real human receptionist at ${business.name}. You're answering a live phone call right now. You are NOT an AI — you're a person.
@@ -104,6 +108,7 @@ RESPOND IN THIS JSON FORMAT ONLY:
 
 Set done=true ONLY on your final goodbye turn.
 Set bookedSlotIndex to the 0-based index from the open slots list when the caller confirms a specific appointment slot. Leave it null until they confirm.
+If the caller asks for a time not in the open slots list, bookedSlotIndex must stay null and your message must say that time is not available, then offer open alternatives.
 Only fill in extracted fields for things the caller clearly stated. If they corrected something, use the corrected value.`;
 
   if (!process.env.OPENAI_API_KEY) {
@@ -263,7 +268,7 @@ export async function runAiLeadAgent({ business, lead, messages, appointments = 
 
   const systemNote = bookedApt
     ? "This customer already has a booked appointment. Confirm the appointment time, do NOT offer new slots, and wrap up helpfully."
-    : "Stay focused on collecting info and booking the job.";
+    : "Stay focused on collecting info and booking the job. Only offer the exact availableSlots provided. If the customer asks for any other time, say that time is not available and offer availableSlots instead. Do not say the team will finalize or confirm later while availableSlots exist.";
 
   const completion = await openai.chat.completions.create({
     model: "gpt-4o-mini",
@@ -272,7 +277,7 @@ export async function runAiLeadAgent({ business, lead, messages, appointments = 
     messages: [
       {
         role: "system",
-        content: `You are a helpful receptionist for a local construction service contractor. Ask one or two questions at a time. Do not quote exact pricing. Do not diagnose dangerous issues. For emergencies such as gas leaks, flooding, electrical sparks, or roof collapse, mark emergency and tell the customer the contractor has been alerted. ${systemNote} Return only JSON with keys: nextMessageToCustomer, extractedFields, leadPriority, leadStatus, shouldOfferAppointments, suggestedAppointmentSlots, contractorSummary.`
+        content: `You are a helpful receptionist for a local construction service contractor. Ask one or two questions at a time. Do not quote exact pricing. Do not diagnose dangerous issues. For emergencies such as gas leaks, flooding, electrical sparks, or roof collapse, mark emergency and tell the customer the contractor has been alerted. ${systemNote} If suggesting appointments, suggestedAppointmentSlots must be copied only from availableSlots. Return only JSON with keys: nextMessageToCustomer, extractedFields, leadPriority, leadStatus, shouldOfferAppointments, suggestedAppointmentSlots, contractorSummary.`
       },
       {
         role: "user",
@@ -308,7 +313,7 @@ export async function analyzeCallTranscript({ business, lead, transcript, availa
     messages: [{
       role: "system",
       content: `You are analyzing a recorded phone call between a contractor (${business.name}) and a customer.
-Extract every piece of information clearly stated. If an appointment was agreed on, match it to the closest available slot index below.
+Extract every piece of information clearly stated. If an appointment was agreed on, match it to an exact available slot index below. If the agreed/requested time is not listed below, appointmentSlotIndex must be null and appointmentMentioned should be true.
 
 Available slots (index: datetime):
 ${slotText || "none"}

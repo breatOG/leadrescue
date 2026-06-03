@@ -18,7 +18,10 @@ Qualify the caller and help them get scheduled. Collect only what is needed:
 - short issue description
 - preferred appointment time
 - whether photos are available
-- If enough information is collected, offer to have the contractor follow up or schedule from available times if they are known.
+- If enough information is collected, schedule only from the exact open appointment slots listed in context.
+- If the caller asks for a time that is not in the open slots, or is listed as unavailable/booked, say that time is not available and offer two or three different open slots.
+- Do not say the team will finalize, confirm later, or reach out to confirm if you have open slots to offer.
+- Do not tell the caller they are scheduled unless they clearly choose one of the listed open slots.
 - If the caller already has an upcoming appointment, acknowledge it by service type and date/time, ask if they are calling to update details, reschedule, or add information. Do not re-qualify from scratch.
 - If the caller is calling after a past appointment, ask how the appointment went and whether they need follow-up help, maintenance, or another visit. Do not say they have an upcoming appointment if the appointment date has passed.
 
@@ -38,7 +41,7 @@ Qualify the caller and help them get scheduled. Collect only what is needed:
 - If the audio is unclear, say something natural like: "Sorry, I didn't quite catch that. Could you say that one more time?"
 - Ignore non-speech sounds such as TV, music, car noise, rustling, beeps, or voices far away from the phone.
 - In your first response to the caller, include the business name.
-- When you have collected all the key details, give a brief recap to confirm accuracy and let the caller know the team will reach out to confirm the appointment time.
+- When you have collected all the key details, give a brief recap and move toward one of the listed open appointment slots.
 - After the recap, ask if there is anything else you can help with and wait for the caller's response. Never assume the conversation is over.
 - If the caller wants to discuss specific times or scheduling details, stay fully engaged — do not rush to close.
 - Only end the call when the caller explicitly signals they are done — phrases like "that's all", "thanks, bye", "sounds good, goodbye", "I'm good", or "have a good one". Do not end the call if they are still asking questions or discussing details.
@@ -149,6 +152,14 @@ async function buildCallerMemory({ leadId, businessId }) {
     where: { id: businessId },
     include: { serviceTypes: true, availability: true }
   });
+  const [openSlots, bookedBusinessAppointments] = await Promise.all([
+    getAvailableSlots(businessId).catch(() => []),
+    prisma.appointment.findMany({
+      where: { businessId, status: "booked", startAt: { gte: new Date() } },
+      orderBy: { startAt: "asc" },
+      take: 12
+    }).catch(() => [])
+  ]);
 
   if (!lead || !business) return "";
 
@@ -193,6 +204,29 @@ async function buildCallerMemory({ leadId, businessId }) {
       return `${timing} appointment: ${new Date(appointment.startAt).toLocaleString()} (${appointment.status})`;
     })
     .join("\n");
+  const tz = process.env.BUSINESS_TIMEZONE || "America/Indiana/Indianapolis";
+  const openSlotText = openSlots.slice(0, 8)
+    .map((slot, index) => `${index + 1}. ${new Date(slot.startAt).toLocaleString("en-US", {
+      timeZone: tz,
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true
+    })}`)
+    .join("\n");
+  const unavailableText = bookedBusinessAppointments
+    .map((appointment) => new Date(appointment.startAt).toLocaleString("en-US", {
+      timeZone: tz,
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true
+    }))
+    .join("\n");
 
   return `# Business Context
 Business name: ${business.name}
@@ -209,6 +243,15 @@ ${eventGuidance}
 
 # Recent Conversation History
 ${recentMessages || "No previous messages."}
+
+# Scheduling
+Open appointment slots you may offer:
+${openSlotText || "No open slots are currently available."}
+
+Unavailable/booked appointment times:
+${unavailableText || "No upcoming booked appointments found."}
+
+Scheduling rule: You may only offer and accept the exact open appointment slots above. If the caller requests a time not listed as open, tell them that time is not available and offer different open slots. Never say the team will finalize or confirm a requested time that is not open.
 
 # Appointment History
 ${appointments || "No appointment booked yet."}`;
@@ -615,19 +658,21 @@ export function handleTwilioVoiceStream(twilioWs) {
       businessId = event.start?.customParameters?.businessId || null;
       businessName = event.start?.customParameters?.businessName || businessName;
       console.log(`[voice-ai] Twilio stream started streamSid=${streamSid}`);
-      if (voiceMemoryEnabled()) {
-        buildCallerMemory({ leadId, businessId })
-          .then((memory) => {
-            callerMemory = memory;
-            twilioStartReceived = true;
-            maybeInitSession();
-          })
-          .catch((error) => {
-            console.error("[voice-ai] Failed to build caller memory:", error.message);
-            twilioStartReceived = true;
-            maybeInitSession();
-          });
-      } else {
+      if (!voiceMemoryEnabled()) {
+        console.log("[voice-ai] Voice memory disabled; still loading scheduling context.");
+      }
+      buildCallerMemory({ leadId, businessId })
+        .then((memory) => {
+          callerMemory = memory;
+          twilioStartReceived = true;
+          maybeInitSession();
+        })
+        .catch((error) => {
+          console.error("[voice-ai] Failed to build caller scheduling context:", error.message);
+          twilioStartReceived = true;
+          maybeInitSession();
+        });
+      if (!leadId || !businessId) {
         twilioStartReceived = true;
         maybeInitSession();
       }
