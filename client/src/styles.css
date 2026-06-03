@@ -610,6 +610,36 @@ button.button {
   padding-right: 4px;
 }
 
+.conversation-session {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: #fbfcfe;
+}
+
+.conversation-session-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid #eef2f7;
+  padding-bottom: 8px;
+}
+
+.conversation-session-header strong {
+  color: #0f172a;
+  font-size: 0.84rem;
+}
+
+.conversation-session-header span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 650;
+  text-align: right;
+}
+
 .message {
   max-width: 82%;
   border-radius: 8px;

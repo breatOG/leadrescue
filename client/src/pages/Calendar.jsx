@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, ChevronLeft, ChevronRight, Clock, MapPin, Phone, User } from "lucide-react";
 import { api, getCache, setCache } from "../api/client.js";
+import { businessDateKey, formatBusinessDate, formatBusinessDateTime, formatBusinessTime } from "../utils/dates.js";
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -16,11 +17,11 @@ const URGENCY = {
 const STATUS_COLOR = { booked: "#2563eb", completed: "#16a34a", cancelled: "#ef4444" };
 
 function isSameDay(a, b) {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  return businessDateKey(a) === businessDateKey(b);
 }
 
 function fmtTime(iso) {
-  return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+  return formatBusinessTime(iso, { hour: "numeric", minute: "2-digit", hour12: true });
 }
 
 function AppointmentCard({ appt, onUpdate }) {
@@ -176,7 +177,7 @@ function AppointmentCard({ appt, onUpdate }) {
                 <select value={newSlot} onChange={(e) => setNewSlot(e.target.value)} style={{ padding: "7px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: "0.86rem" }}>
                   {rescheduleSlots.map((s) => (
                     <option key={s.startAt} value={s.startAt}>
-                      {new Date(s.startAt).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                      {formatBusinessDateTime(s.startAt, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                     </option>
                   ))}
                 </select>
@@ -315,7 +316,7 @@ export default function CalendarPage() {
       {todayAppts.length > 0 && (
         <div className="panel" style={{ marginBottom: 18 }}>
           <h2 style={{ marginTop: 0, marginBottom: 14 }}>
-            Today — {today.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+            Today — {formatBusinessDate(today, { weekday: "long", month: "long", day: "numeric" })}
             <span style={{ marginLeft: 10, fontWeight: 400, fontSize: "0.85rem", color: "#6b7280" }}>
               {todayAppts.length} appointment{todayAppts.length !== 1 ? "s" : ""}
             </span>
@@ -393,7 +394,7 @@ export default function CalendarPage() {
           {/* Selected day appointments */}
           <div className="panel">
             <h3 style={{ marginTop: 0, marginBottom: 14 }}>
-              {selected.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+              {formatBusinessDate(selected, { weekday: "long", month: "long", day: "numeric" })}
               {selectedAppts.length > 0 && (
                 <span style={{ marginLeft: 8, fontWeight: 400, fontSize: "0.82rem", color: "#6b7280" }}>
                   {selectedAppts.length} appointment{selectedAppts.length !== 1 ? "s" : ""}
@@ -423,7 +424,7 @@ export default function CalendarPage() {
                         {a.lead?.customerName || a.lead?.customerPhone || "Unknown"}
                       </div>
                       <div style={{ fontSize: "0.75rem", color: "#9ca3af" }}>
-                        {new Date(a.startAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · {fmtTime(a.startAt)}
+                        {formatBusinessDate(a.startAt, { month: "short", day: "numeric" })} · {fmtTime(a.startAt)}
                       </div>
                     </div>
                   </Link>

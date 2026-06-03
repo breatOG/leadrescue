@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { api, getCache, setCache } from "../api/client.js";
 import { markLeadSeen } from "../utils/seenLeads.js";
 import { Badge } from "../components/Layout.jsx";
+import { formatBusinessDateTime } from "../utils/dates.js";
 
 function AppointmentRow({ apt, onUpdate }) {
   const [showReschedule, setShowReschedule] = useState(false);
@@ -53,7 +54,7 @@ function AppointmentRow({ apt, onUpdate }) {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
         <div>
           <span style={{ fontWeight: 700, fontSize: "0.88rem" }}>
-            {new Date(apt.startAt).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+            {formatBusinessDateTime(apt.startAt, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
           </span>
           {apt.source === "ai" && (
             <span style={{ marginLeft: 7, fontSize: "0.65rem", fontWeight: 800, color: "#0f766e", background: "#ccfbf1", border: "1px solid #99f6e4", padding: "1px 6px", borderRadius: 99 }}>🤖 AI</span>
@@ -79,7 +80,7 @@ function AppointmentRow({ apt, onUpdate }) {
             <select value={slot} onChange={(e) => setSlot(e.target.value)} style={{ padding: "7px 10px", border: "1px solid #d1d5db", borderRadius: 7, fontSize: "0.85rem" }}>
               {slots.map((s) => (
                 <option key={s.startAt} value={s.startAt}>
-                  {new Date(s.startAt).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                  {formatBusinessDateTime(s.startAt, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                 </option>
               ))}
             </select>
@@ -116,6 +117,42 @@ function channelIcon(channel) {
   if (channel === "voice") return "📞";
   if (channel === "sms") return "💬";
   return "📋";
+}
+
+function sessionTitle(messages, index) {
+  const first = messages[0];
+  const inbound = messages.filter((message) => message.direction === "inbound").length;
+  const outbound = messages.length - inbound;
+  const channels = [...new Set(messages.map((message) => message.channel))];
+  const channelLabel = channels.length === 1
+    ? channels[0] === "voice" ? "Voice call" : channels[0] === "sms" ? "SMS thread" : "Conversation"
+    : "Mixed conversation";
+
+  return {
+    title: `${channelLabel} ${index + 1}`,
+    meta: `${formatBusinessDateTime(first.createdAt, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} - ${inbound} customer, ${outbound} team`
+  };
+}
+
+function groupConversationSessions(messages) {
+  const sorted = messages.slice().sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  const sessions = [];
+
+  for (const message of sorted) {
+    const current = sessions[sessions.length - 1];
+    const previous = current?.messages[current.messages.length - 1];
+    const gapMs = previous ? new Date(message.createdAt) - new Date(previous.createdAt) : 0;
+    const startsNewCall = message.channel === "voice" && previous?.channel !== "voice";
+    const longGap = gapMs > 2 * 60 * 60 * 1000;
+
+    if (!current || longGap || startsNewCall) {
+      sessions.push({ messages: [message] });
+    } else {
+      current.messages.push(message);
+    }
+  }
+
+  return sessions.map((session, index) => ({ ...session, ...sessionTitle(session.messages, index) }));
 }
 
 export default function LeadDetail() {
@@ -239,6 +276,7 @@ export default function LeadDetail() {
   );
 
   const visibleMessages = lead.messages.filter((m) => m.body !== "[call started]");
+  const conversationSessions = groupConversationSessions(visibleMessages);
 
   return (
     <div className="page detail-grid">
@@ -270,7 +308,10 @@ export default function LeadDetail() {
           <Field label="Job type" value={lead.jobType} />
           <Field label="Issue" value={lead.issueDescription} />
           <Field label="Urgency" value={lead.urgency} />
-          <Field label="Preferred appointment" value={lead.preferredAppointmentTime} />
+          <Field
+            label="Preferred appointment"
+            value={lead.preferredAppointmentTime ? formatBusinessDateTime(lead.preferredAppointmentTime, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : null}
+          />
           <Field label="Photos available" value={lead.photosAvailable != null ? (lead.photosAvailable ? "Yes" : "No") : null} />
         </div>
 
@@ -295,7 +336,7 @@ export default function LeadDetail() {
               <select value={bookingSlot} onChange={(e) => setBookingSlot(e.target.value)} style={{ padding: "7px 10px", border: "1px solid var(--line)", borderRadius: 8, fontSize: "0.88rem" }}>
                 {slots.map((s) => (
                   <option key={s.startAt} value={s.startAt}>
-                    {new Date(s.startAt).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                    {formatBusinessDateTime(s.startAt, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                   </option>
                 ))}
               </select>
@@ -366,15 +407,23 @@ export default function LeadDetail() {
           </p>
         )}
         <div className="message-thread">
-          {visibleMessages.map((message) => (
-            <div className={`message ${message.direction}`} key={message.id}>
-              <small>
-                {channelIcon(message.channel)} {message.direction === "inbound" ? "Customer" : "AI"} · {new Date(message.createdAt).toLocaleString()}
-              </small>
-              <p>{message.body}</p>
+          {conversationSessions.map((session) => (
+            <div className="conversation-session" key={`${session.title}-${session.messages[0]?.id}`}>
+              <div className="conversation-session-header">
+                <strong>{session.title}</strong>
+                <span>{session.meta}</span>
+              </div>
+              {session.messages.map((message) => (
+                <div className={`message ${message.direction}`} key={message.id}>
+                  <small>
+                    {channelIcon(message.channel)} {message.direction === "inbound" ? "Customer" : "AI"} - {formatBusinessDateTime(message.createdAt, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                  </small>
+                  <p>{message.body}</p>
+                </div>
+              ))}
             </div>
           ))}
-          {visibleMessages.length === 0 && <p>No messages yet.</p>}
+          {conversationSessions.length === 0 && <p>No messages yet.</p>}
         </div>
         <form className="manual-message" onSubmit={sendManualMessage}>
           <textarea value={manualMessage} onChange={(e) => setManualMessage(e.target.value)} placeholder="Send a manual SMS..." rows="3" />

@@ -1,6 +1,51 @@
 import { prisma } from "../prisma/client.js";
 
 const BUSINESS_TZ = process.env.BUSINESS_TIMEZONE || "America/Indiana/Indianapolis";
+const LOCAL_DATE_TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/;
+
+function datePartsInTz(date, tz) {
+  return Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    })
+      .formatToParts(date)
+      .filter((p) => p.type !== "literal")
+      .map((p) => [p.type, Number(p.value)])
+  );
+}
+
+function localPartsToUtc({ year, month, day, hour, minute }, tz) {
+  const targetLocalMs = Date.UTC(year, month - 1, day, hour, minute, 0, 0);
+  let utcMs = targetLocalMs;
+
+  for (let i = 0; i < 4; i++) {
+    const shown = datePartsInTz(new Date(utcMs), tz);
+    const shownLocalMs = Date.UTC(shown.year, shown.month - 1, shown.day, shown.hour % 24, shown.minute, 0, 0);
+    const diffMs = targetLocalMs - shownLocalMs;
+    if (diffMs === 0) break;
+    utcMs += diffMs;
+  }
+
+  return new Date(utcMs);
+}
+
+function parseAppointmentStart(startAt) {
+  if (startAt instanceof Date) return startAt;
+  const raw = String(startAt || "").trim();
+  if (LOCAL_DATE_TIME_RE.test(raw)) {
+    const [datePart, timePart] = raw.split("T");
+    const [year, month, day] = datePart.split("-").map(Number);
+    const [hour, minute] = timePart.split(":").map(Number);
+    return localPartsToUtc({ year, month, day, hour, minute }, BUSINESS_TZ);
+  }
+  return new Date(raw);
+}
 
 // ── Timezone-correct time parsing ────────────────────────────────────────────
 // Returns the UTC Date that corresponds to "HH:MM on the calendar day of baseDate"
@@ -81,9 +126,10 @@ export async function getAvailableSlots(businessId, daysAhead = 10) {
 // ── Book appointment ──────────────────────────────────────────────────────────
 export async function bookAppointment({ businessId, leadId, startAt, notes, force = false, source = "ai" }) {
   let selected;
+  const selectedStart = parseAppointmentStart(startAt);
 
   if (force) {
-    const endAt = new Date(new Date(startAt).getTime() + 60 * 60_000).toISOString();
+    const selectedEnd = new Date(selectedStart.getTime() + 60 * 60_000);
 
     // Even with force=true we must reject overlapping bookings
     const conflict = await prisma.appointment.findFirst({
@@ -91,8 +137,8 @@ export async function bookAppointment({ businessId, leadId, startAt, notes, forc
         businessId,
         status: "booked",
         AND: [
-          { startAt: { lt: new Date(endAt) } },
-          { endAt:   { gt: new Date(startAt) } },
+          { startAt: { lt: selectedEnd } },
+          { endAt:   { gt: selectedStart } },
         ],
       },
     });
@@ -104,11 +150,11 @@ export async function bookAppointment({ businessId, leadId, startAt, notes, forc
       throw new Error(`That time overlaps with an existing appointment at ${conflictStr}. Please choose a different time.`);
     }
 
-    selected = { startAt, endAt };
+    selected = { startAt: selectedStart.toISOString(), endAt: selectedEnd.toISOString() };
   } else {
     const slots = await getAvailableSlots(businessId);
     // Lenient match (within 60 s) so minor floating-point differences don't break booking
-    selected = slots.find(s => Math.abs(new Date(s.startAt) - new Date(startAt)) < 60_000);
+    selected = slots.find(s => Math.abs(new Date(s.startAt) - selectedStart) < 60_000);
     if (!selected) throw new Error("Selected appointment slot is no longer available");
   }
 
