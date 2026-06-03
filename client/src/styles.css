@@ -610,6 +610,53 @@ button.button {
   padding-right: 4px;
 }
 
+.conversation-workspace {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.42fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.conversation-tabs {
+  display: grid;
+  gap: 8px;
+  max-height: 560px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.conversation-tab {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: #ffffff;
+  color: #334155;
+  text-align: left;
+  cursor: pointer;
+}
+
+.conversation-tab.active {
+  border-color: #99f6e4;
+  background: #f0fdfa;
+  color: #0f766e;
+}
+
+.conversation-tab span {
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.conversation-tab small,
+.conversation-tab em {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 650;
+}
+
 .conversation-session {
   display: grid;
   gap: 10px;
@@ -617,6 +664,10 @@ button.button {
   border-radius: 8px;
   padding: 10px;
   background: #fbfcfe;
+}
+
+.conversation-session.active {
+  min-width: 0;
 }
 
 .conversation-session-header {
@@ -638,6 +689,41 @@ button.button {
   font-size: 0.76rem;
   font-weight: 650;
   text-align: right;
+}
+
+.conversation-brief {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  padding: 11px 12px;
+  background: #f8fbff;
+}
+
+.conversation-brief span {
+  display: block;
+  margin-bottom: 3px;
+  color: #2563eb;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.conversation-brief p,
+.conversation-brief ul {
+  margin: 0;
+  color: #334155;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.conversation-brief ul {
+  padding-left: 18px;
+}
+
+.message-thread.session-only {
+  max-height: 390px;
 }
 
 .message {
@@ -1237,6 +1323,29 @@ button.small {
   .activity-toast a {
     display: grid;
     gap: 1px;
+  }
+
+  .conversation-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .conversation-tabs {
+    display: flex;
+    overflow-x: auto;
+    max-height: none;
+    padding: 0 0 4px;
+  }
+
+  .conversation-tab {
+    min-width: 148px;
+  }
+
+  .conversation-session-header {
+    display: grid;
+  }
+
+  .conversation-session-header span {
+    text-align: left;
   }
 
   .page {

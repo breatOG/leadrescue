@@ -121,6 +121,7 @@ function channelIcon(channel) {
 
 function sessionTitle(messages, index) {
   const first = messages[0];
+  const last = messages[messages.length - 1];
   const inbound = messages.filter((message) => message.direction === "inbound").length;
   const outbound = messages.length - inbound;
   const channels = [...new Set(messages.map((message) => message.channel))];
@@ -129,8 +130,54 @@ function sessionTitle(messages, index) {
     : "Mixed conversation";
 
   return {
+    key: `${first.id}-${last.id}`,
     title: `${channelLabel} ${index + 1}`,
-    meta: `${formatBusinessDateTime(first.createdAt, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} - ${inbound} customer, ${outbound} team`
+    channelLabel,
+    meta: `${formatBusinessDateTime(first.createdAt, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} - ${inbound} customer, ${outbound} team`,
+    shortDate: formatBusinessDateTime(first.createdAt, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
+    inbound,
+    outbound
+  };
+}
+
+function summarizeSession(session, lead) {
+  const inboundText = session.messages
+    .filter((message) => message.direction === "inbound")
+    .map((message) => message.body)
+    .join(" ")
+    .trim();
+  const allText = session.messages.map((message) => message.body).join(" ");
+  const latestCustomerMessage = session.messages
+    .filter((message) => message.direction === "inbound")
+    .at(-1)?.body;
+
+  const concernPatterns = [
+    /\b(no heat|not heating|no ac|not cooling|leak(?:ing)?|clog(?:ged)?|flood(?:ing)?|sparks?|smell(?:s)? gas|broken|not working|won'?t turn on|emergency|urgent)\b[^.!?\n]*/gi,
+    /\b(cancel|reschedule|schedule|appointment|quote|estimate|price|cost)\b[^.!?\n]*/gi
+  ];
+  const concerns = concernPatterns
+    .flatMap((pattern) => [...allText.matchAll(pattern)].map((match) => match[0].trim()))
+    .filter(Boolean)
+    .slice(0, 3);
+
+  const hasAppointment = /\b(booked|confirmed|appointment|schedule|reschedule)\b/i.test(allText);
+  const hasCustomerReply = session.messages.some((message) => message.direction === "inbound");
+  const summary = latestCustomerMessage
+    ? latestCustomerMessage.slice(0, 180)
+    : inboundText
+      ? inboundText.slice(0, 180)
+      : "No customer message in this session.";
+
+  let nextStep = "Review this session and follow up if needed.";
+  if (hasAppointment) nextStep = "Check the appointment details before replying.";
+  else if (!hasCustomerReply) nextStep = "This session only has team/AI messages.";
+  else if (lead.handoffMode === "human") nextStep = "You are handling this thread now.";
+  else nextStep = "AI is handling replies unless you take over.";
+
+  return {
+    summary,
+    concerns: concerns.length ? [...new Set(concerns)] : ["No clear problem detected in this session."],
+    nextStep
   };
 }
 
@@ -168,6 +215,7 @@ export default function LeadDetail() {
   const [booking, setBooking] = useState(false);
   const [calling, setCalling] = useState(false);
   const [callMsg, setCallMsg] = useState("");
+  const [activeSessionKey, setActiveSessionKey] = useState("");
 
   async function loadLead() {
     const data = await api(`/api/leads/${id}`);
@@ -277,6 +325,8 @@ export default function LeadDetail() {
 
   const visibleMessages = lead.messages.filter((m) => m.body !== "[call started]");
   const conversationSessions = groupConversationSessions(visibleMessages);
+  const activeSession = conversationSessions.find((session) => session.key === activeSessionKey) || conversationSessions[conversationSessions.length - 1];
+  const activeSessionBrief = activeSession ? summarizeSession(activeSession, lead) : null;
 
   return (
     <div className="page detail-grid">
@@ -406,25 +456,68 @@ export default function LeadDetail() {
             {callMsg}
           </p>
         )}
-        <div className="message-thread">
-          {conversationSessions.map((session) => (
-            <div className="conversation-session" key={`${session.title}-${session.messages[0]?.id}`}>
-              <div className="conversation-session-header">
-                <strong>{session.title}</strong>
-                <span>{session.meta}</span>
-              </div>
-              {session.messages.map((message) => (
-                <div className={`message ${message.direction}`} key={message.id}>
-                  <small>
-                    {channelIcon(message.channel)} {message.direction === "inbound" ? "Customer" : "AI"} - {formatBusinessDateTime(message.createdAt, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-                  </small>
-                  <p>{message.body}</p>
-                </div>
-              ))}
+        {conversationSessions.length === 0 ? (
+          <div className="message-thread"><p>No messages yet.</p></div>
+        ) : (
+          <div className="conversation-workspace">
+            <div className="conversation-tabs" role="tablist" aria-label="Conversation sessions">
+              {conversationSessions.map((session) => {
+                const selected = activeSession?.key === session.key;
+                return (
+                  <button
+                    type="button"
+                    key={session.key}
+                    className={`conversation-tab ${selected ? "active" : ""}`}
+                    onClick={() => setActiveSessionKey(session.key)}
+                    role="tab"
+                    aria-selected={selected}
+                  >
+                    <span>{session.title}</span>
+                    <small>{session.shortDate}</small>
+                    <em>{session.inbound} customer / {session.outbound} team</em>
+                  </button>
+                );
+              })}
             </div>
-          ))}
-          {conversationSessions.length === 0 && <p>No messages yet.</p>}
-        </div>
+
+            <div className="conversation-session active">
+              <div className="conversation-session-header">
+                <strong>{activeSession.title}</strong>
+                <span>{activeSession.meta}</span>
+              </div>
+
+              {activeSessionBrief && (
+                <div className="conversation-brief">
+                  <div>
+                    <span>Summary</span>
+                    <p>{activeSessionBrief.summary}</p>
+                  </div>
+                  <div>
+                    <span>Problems / Requests</span>
+                    <ul>
+                      {activeSessionBrief.concerns.map((concern) => <li key={concern}>{concern}</li>)}
+                    </ul>
+                  </div>
+                  <div>
+                    <span>Next step</span>
+                    <p>{activeSessionBrief.nextStep}</p>
+                  </div>
+                </div>
+              )}
+
+              <div className="message-thread session-only">
+                {activeSession.messages.map((message) => (
+                  <div className={`message ${message.direction}`} key={message.id}>
+                    <small>
+                      {channelIcon(message.channel)} {message.direction === "inbound" ? "Customer" : "AI"} - {formatBusinessDateTime(message.createdAt, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                    </small>
+                    <p>{message.body}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
         <form className="manual-message" onSubmit={sendManualMessage}>
           <textarea value={manualMessage} onChange={(e) => setManualMessage(e.target.value)} placeholder="Send a manual SMS..." rows="3" />
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
