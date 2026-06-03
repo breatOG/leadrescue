@@ -47,7 +47,6 @@ export async function getAvailableSlots(businessId, daysAhead = 10) {
     where: { businessId, status: "booked", startAt: { gte: new Date() } }
   });
 
-  const bookedMs = new Set(booked.map(a => a.startAt.getTime()));
   const slots = [];
   const now = new Date();
 
@@ -63,7 +62,12 @@ export async function getAvailableSlots(businessId, daysAhead = 10) {
 
       while (cursor < end) {
         const slotEnd = new Date(cursor.getTime() + rule.slotMinutes * 60_000);
-        if (slotEnd <= end && cursor > now && !bookedMs.has(cursor.getTime())) {
+        // Overlap check — hides any slot touched by an existing booking
+        const overlaps = booked.some(b =>
+          cursor.getTime() < b.endAt.getTime() &&
+          slotEnd.getTime() > b.startAt.getTime()
+        );
+        if (slotEnd <= end && cursor > now && !overlaps) {
           slots.push({ startAt: cursor.toISOString(), endAt: slotEnd.toISOString() });
         }
         cursor = slotEnd;

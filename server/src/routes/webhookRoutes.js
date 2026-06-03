@@ -162,14 +162,36 @@ async function handleAppointmentChoice({ business, lead, body }) {
   const selected = slots[choice - 1];
   if (!selected) return null;
 
-  const appointment = await bookAppointment({
-    businessId: business.id,
-    leadId: lead.id,
-    startAt: selected.startAt,
-    notes: "Booked from SMS appointment choice."
-  });
+  let appointment;
+  try {
+    appointment = await bookAppointment({
+      businessId: business.id,
+      leadId: lead.id,
+      startAt: selected.startAt,
+      notes: "Booked from SMS appointment choice."
+    });
+  } catch {
+    // Slot was just taken — re-fetch remaining slots and offer them
+    const remaining = await getAvailableSlots(business.id);
+    const tz = process.env.BUSINESS_TIMEZONE || "America/Indiana/Indianapolis";
+    if (!remaining.length) {
+      const noSlotMsg = "Sorry, that time just got booked. We don't have any other openings right now — we'll reach out soon to find a time that works.";
+      await sendSms({ to: lead.customerPhone, from: business.twilioPhoneNumber || process.env.TWILIO_PHONE_NUMBER, body: noSlotMsg });
+      await prisma.message.create({ data: { leadId: lead.id, direction: "outbound", channel: "sms", body: noSlotMsg } });
+      await prisma.lead.update({ where: { id: lead.id }, data: { lastMessage: noSlotMsg } });
+    } else {
+      const slotList = remaining.slice(0, 3).map((s, i) =>
+        `${i + 1}. ${new Date(s.startAt).toLocaleString("en-US", { timeZone: tz, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true })}`
+      ).join("\n");
+      const retryMsg = `Sorry, that time just got booked. Here are the next available times:\n\n${slotList}\n\nReply 1, 2, or 3 to pick one.`;
+      await sendSms({ to: lead.customerPhone, from: business.twilioPhoneNumber || process.env.TWILIO_PHONE_NUMBER, body: retryMsg });
+      await prisma.message.create({ data: { leadId: lead.id, direction: "outbound", channel: "sms", body: retryMsg } });
+      await prisma.lead.update({ where: { id: lead.id }, data: { lastMessage: retryMsg } });
+    }
+    return null;
+  }
 
-  const responseBody = `You're booked for ${new Date(appointment.startAt).toLocaleString()}. The team has your details and will follow up if anything else is needed.`;
+  const responseBody = `You're booked for ${new Date(appointment.startAt).toLocaleString("en-US", { timeZone: process.env.BUSINESS_TIMEZONE || "America/Indiana/Indianapolis", weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true })}. The team has your details and will follow up if anything else is needed.`;
   const result = await sendSms({
     to: lead.customerPhone,
     from: business.twilioPhoneNumber || process.env.TWILIO_PHONE_NUMBER,
