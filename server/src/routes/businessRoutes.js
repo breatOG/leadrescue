@@ -1,9 +1,13 @@
 import express from "express";
 import asyncHandler from "express-async-handler";
+import crypto from "crypto";
 import twilio from "twilio";
 import { prisma } from "../prisma/client.js";
 import { requireAuth, invalidateAuthCache } from "../middleware/auth.js";
 import { searchNumbersByZip, purchaseSelectedNumber, poolNumberFromUser } from "../services/phoneProvisioningService.js";
+import {
+  isGoogleConfigured, getGoogleAuthUrl, exchangeGoogleCode, generateIcsFeed
+} from "../services/googleCalendarService.js";
 
 function tokenFrom(req) {
   const header = req.headers.authorization || "";
@@ -304,5 +308,77 @@ router.post(
     res.json({ ok: true, phoneNumber: business.twilioPhoneNumber });
   })
 );
+
+// ── Google Calendar OAuth ─────────────────────────────────────────────────────
+
+// Returns the OAuth URL the frontend should redirect to
+router.get("/google-auth-url", requireAuth, asyncHandler(async (req, res) => {
+  if (!isGoogleConfigured()) return res.status(503).json({ error: "Google Calendar not configured on this server." });
+  res.json({ url: getGoogleAuthUrl(req.business.id) });
+}));
+
+// OAuth callback — Google redirects here after the user grants access
+router.get("/google-callback", asyncHandler(async (req, res) => {
+  const { code, state: businessId, error } = req.query;
+  const clientUrl = (process.env.CLIENT_URL || "http://localhost:5173").replace(/\/$/, "");
+  if (error || !code || !businessId) {
+    return res.redirect(`${clientUrl}/settings?google=error`);
+  }
+  try {
+    const tokens = await exchangeGoogleCode(code);
+    await prisma.business.update({
+      where: { id: businessId },
+      data: {
+        googleAccessToken:  tokens.access_token  || null,
+        googleRefreshToken: tokens.refresh_token || null,
+      },
+    });
+    res.redirect(`${clientUrl}/settings?google=connected`);
+  } catch {
+    res.redirect(`${clientUrl}/settings?google=error`);
+  }
+}));
+
+// Disconnect Google Calendar
+router.post("/google-disconnect", requireAuth, asyncHandler(async (req, res) => {
+  await prisma.business.update({
+    where: { id: req.business.id },
+    data: { googleAccessToken: null, googleRefreshToken: null },
+  });
+  res.json({ ok: true });
+}));
+
+// ── .ics calendar feed ────────────────────────────────────────────────────────
+
+// Returns (and lazily creates) the business's unique .ics feed URL
+router.get("/ics-url", requireAuth, asyncHandler(async (req, res) => {
+  let biz = req.business;
+  if (!biz.icsToken) {
+    biz = await prisma.business.update({
+      where: { id: biz.id },
+      data: { icsToken: crypto.randomUUID() },
+    });
+  }
+  const base = (process.env.APP_BASE_URL || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
+  res.json({ url: `${base}/api/calendar-feed/${biz.icsToken}` });
+}));
+
+// Public .ics feed — no auth, protected by the secret token in the URL
+router.get("/calendar-feed/:token", asyncHandler(async (req, res) => {
+  const business = await prisma.business.findUnique({ where: { icsToken: req.params.token } });
+  if (!business) return res.status(404).send("Not found");
+
+  const appointments = await prisma.appointment.findMany({
+    where: { businessId: business.id },
+    include: { lead: true },
+    orderBy: { startAt: "asc" },
+  });
+
+  const ics = generateIcsFeed(appointments, business.name);
+  res.set("Content-Type", "text/calendar; charset=utf-8");
+  res.set("Content-Disposition", `inline; filename="leadrescue.ics"`);
+  res.set("Cache-Control", "no-cache");
+  res.send(ics);
+}));
 
 export default router;

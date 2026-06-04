@@ -410,6 +410,109 @@ function MemberRow({ user: u, onRemove, onPermissionsChange }) {
   );
 }
 
+function CalendarIntegrations() {
+  const [googleConnected, setGoogleConnected] = useState(null); // null=loading, true, false
+  const [icsUrl, setIcsUrl] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+
+  useEffect(() => {
+    // Check if google is connected by inspecting business settings
+    api("/api/business/settings").then(({ business }) => {
+      setGoogleConnected(Boolean(business?.googleRefreshToken));
+    }).catch(() => setGoogleConnected(false));
+
+    // Check URL params for OAuth return
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("google") === "connected") {
+      setGoogleConnected(true);
+      window.history.replaceState({}, "", "/settings");
+    }
+  }, []);
+
+  async function connectGoogle() {
+    try {
+      const { url } = await api("/api/business/google-auth-url");
+      window.location.href = url;
+    } catch (e) { alert(e.message); }
+  }
+
+  async function disconnectGoogle() {
+    setDisconnecting(true);
+    try {
+      await api("/api/business/google-disconnect", { method: "POST" });
+      setGoogleConnected(false);
+    } catch (e) { alert(e.message); }
+    finally { setDisconnecting(false); }
+  }
+
+  async function loadIcsUrl() {
+    if (icsUrl) return;
+    try {
+      const { url } = await api("/api/business/ics-url");
+      setIcsUrl(url);
+    } catch (e) { alert(e.message); }
+  }
+
+  function copyIcs() {
+    navigator.clipboard.writeText(icsUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  return (
+    <div className="panel" style={{ marginTop: 18 }}>
+      <h2 style={{ margin: "0 0 4px", fontSize: "1rem" }}>Calendar integrations</h2>
+      <p style={{ margin: "0 0 20px", fontSize: "0.8rem", color: "#94a3b8" }}>
+        Sync LeadRescue appointments into your existing calendar so you never need to check two places.
+      </p>
+
+      {/* Google Calendar */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 0", borderBottom: "1px solid var(--line)", flexWrap: "wrap", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 9, background: "#fff", border: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.2rem" }}>📅</div>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: "0.9rem" }}>Google Calendar</div>
+            <div style={{ fontSize: "0.77rem", color: "#94a3b8" }}>
+              {googleConnected === null ? "Checking…" : googleConnected ? "Connected — new appointments appear automatically" : "New appointments will be added to your Google Calendar"}
+            </div>
+          </div>
+        </div>
+        {googleConnected
+          ? <button onClick={disconnectGoogle} disabled={disconnecting} className="ghost" style={{ fontSize: "0.8rem", color: "#ef4444", borderColor: "#fca5a5" }}>{disconnecting ? "Disconnecting…" : "Disconnect"}</button>
+          : <button onClick={connectGoogle} className="button" style={{ fontSize: "0.82rem" }}>Connect Google Calendar</button>
+        }
+      </div>
+
+      {/* .ics feed */}
+      <div style={{ padding: "14px 0" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 9, background: "#fff", border: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.2rem" }}>🗓️</div>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: "0.9rem" }}>Apple Calendar / Outlook / Any calendar</div>
+            <div style={{ fontSize: "0.77rem", color: "#94a3b8" }}>Subscribe to a live feed URL — works with any calendar app</div>
+          </div>
+        </div>
+        {!icsUrl
+          ? <button onClick={loadIcsUrl} className="ghost" style={{ fontSize: "0.82rem" }}>Get subscription link</button>
+          : (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <input readOnly value={icsUrl} style={{ flex: 1, minWidth: 200, padding: "7px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: "0.78rem", background: "#f8fafc", color: "#374151" }} />
+              <button onClick={copyIcs} className="button" style={{ fontSize: "0.82rem", whiteSpace: "nowrap" }}>{copied ? "Copied ✓" : "Copy link"}</button>
+            </div>
+          )
+        }
+        {icsUrl && (
+          <p style={{ margin: "8px 0 0", fontSize: "0.74rem", color: "#94a3b8" }}>
+            In Google Calendar: Other calendars → + → From URL → paste. In Apple Calendar: File → New Calendar Subscription → paste.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function UserManagement() {
   const cachedTeam = getCache("team");
   const [users, setUsers] = useState(() => cachedTeam?.users || []);
@@ -866,6 +969,7 @@ export default function Settings() {
       <div className="panel" style={{ marginTop: 18 }}>
         <UserManagement />
       </div>
+      <CalendarIntegrations />
     </div>
   );
 }

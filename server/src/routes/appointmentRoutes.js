@@ -5,6 +5,31 @@ import { requireAuth } from "../middleware/auth.js";
 import { bookAppointment, getAvailableSlots } from "../services/schedulingService.js";
 import { notifyContractor } from "../services/notificationService.js";
 import { sendSms } from "../services/twilioService.js";
+import { isGoogleConfigured, createGoogleEvent, deleteGoogleEvent } from "../services/googleCalendarService.js";
+
+async function syncToGoogle(business, appointment, lead) {
+  if (!isGoogleConfigured() || !business.googleAccessToken) return;
+  try {
+    const eventId = await createGoogleEvent({
+      accessToken:  business.googleAccessToken,
+      refreshToken: business.googleRefreshToken,
+      appointment,
+      lead,
+    });
+    await prisma.appointment.update({ where: { id: appointment.id }, data: { calendarEventId: eventId } });
+  } catch (e) {
+    console.error("[google-cal] sync failed:", e.message);
+  }
+}
+
+async function removeFromGoogle(business, appointment) {
+  if (!isGoogleConfigured() || !business.googleAccessToken || !appointment.calendarEventId) return;
+  deleteGoogleEvent({
+    accessToken:  business.googleAccessToken,
+    refreshToken: business.googleRefreshToken,
+    eventId: appointment.calendarEventId,
+  }).catch((e) => console.error("[google-cal] delete failed:", e.message));
+}
 
 const router = express.Router();
 router.use(requireAuth);
@@ -41,6 +66,7 @@ router.post(
       source: "manual",
     });
     const lead = await prisma.lead.findUnique({ where: { id: req.body.leadId } });
+    syncToGoogle(req.business, appointment, lead);
     await notifyContractor({ business: req.business, lead, summary: `Appointment booked for ${appointment.startAt.toLocaleString()}.` });
 
     // Send confirmation SMS to the customer
@@ -73,6 +99,7 @@ router.post(
     if (!existing) return res.status(404).json({ error: "Appointment not found" });
 
     await prisma.appointment.update({ where: { id: existing.id }, data: { status: "cancelled" } });
+    removeFromGoogle(req.business, existing);
 
     const newAppt = await bookAppointment({
       businessId: req.business.id,
@@ -99,6 +126,7 @@ router.post(
       }
     }
 
+    syncToGoogle(req.business, newAppt, existing.lead);
     res.json({ appointment: newAppt });
   })
 );
@@ -125,6 +153,8 @@ router.patch(
       },
       include: { lead: true }
     });
+
+    if (status === "cancelled") removeFromGoogle(req.business, { ...apt, calendarEventId: apt.calendarEventId });
 
     // Keep lead status in sync
     if (status === "cancelled") {

@@ -122,6 +122,8 @@ app.get("/legal/terms", (req, res) => {
 
 app.use("/api/auth", authRoutes);
 app.use("/api/business", businessRoutes);
+// Public .ics calendar feed (token in URL, no auth header needed)
+app.use("/api/calendar-feed", businessRoutes);
 app.use("/api/leads", leadRoutes);
 app.use("/api", appointmentRoutes);
 app.use("/api/dashboard", dashboardRoutes);

@@ -7,6 +7,16 @@ import { runAiLeadAgent, runVoiceAiTurn, analyzeCallTranscript } from "../servic
 import { bookAppointment, getAvailableSlots } from "../services/schedulingService.js";
 import { notifyContractor } from "../services/notificationService.js";
 import { sendSms } from "../services/twilioService.js";
+import { isGoogleConfigured, createGoogleEvent } from "../services/googleCalendarService.js";
+
+async function syncApptToGoogle(business, appointment, lead) {
+  if (!isGoogleConfigured() || !business.googleAccessToken) return;
+  try {
+    const { prisma: p } = await import("../prisma/client.js");
+    const eventId = await createGoogleEvent({ accessToken: business.googleAccessToken, refreshToken: business.googleRefreshToken, appointment, lead });
+    await p.appointment.update({ where: { id: appointment.id }, data: { calendarEventId: eventId } });
+  } catch (e) { console.error("[google-cal] webhook sync failed:", e.message); }
+}
 import { aiVoiceEnabled, createAiVoiceTwiML } from "../services/realtimeVoiceService.js";
 import { PLAN_LIMITS } from "./paymentRoutes.js";
 
@@ -206,6 +216,7 @@ async function handleAppointmentChoice({ business, lead, body }) {
     data: { status: "appointment_booked", lastMessage: responseBody, aiSummary: `Appointment booked for ${appointment.startAt.toLocaleString()}.` }
   });
   await notifyContractor({ business, lead: { ...lead, status: "appointment_booked" }, summary: responseBody });
+  syncApptToGoogle(business, appointment, lead);
 
   return responseBody;
 }
