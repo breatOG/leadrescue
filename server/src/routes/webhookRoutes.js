@@ -18,6 +18,7 @@ async function syncApptToGoogle(business, appointment, lead) {
   } catch (e) { console.error("[google-cal] webhook sync failed:", e.message); }
 }
 import { aiVoiceEnabled, createAiVoiceTwiML } from "../services/realtimeVoiceService.js";
+import { getSession, updateSession, callContractor } from "../services/demoCallService.js";
 import { PLAN_LIMITS } from "./paymentRoutes.js";
 
 // In-memory TTS audio cache: id -> { buffer, createdAt }
@@ -941,6 +942,173 @@ router.post(
     const business = await findBusinessByTwilioNumber(req.body.To);
     await saveWebhook({ businessId: business.id, eventType: "call-status", payload: req.body });
     res.type("text/xml").send("<Response></Response>");
+  })
+);
+
+// ─── Demo Call Webhooks ────────────────────────────────────────────────────────
+
+function getDemoBaseUrl(req) {
+  const env = process.env.APP_BASE_URL;
+  if (env) return env.replace(/\/$/, "");
+  const proto = (req.headers["x-forwarded-proto"] || req.protocol).split(",")[0].trim();
+  const host = req.headers["x-forwarded-host"] || req.get("host");
+  return `${proto}://${host}`;
+}
+
+// Breat's phone is answered — join the named conference
+router.post(
+  "/twilio/demo-owner-join",
+  asyncHandler(async (req, res) => {
+    const { sessionId } = req.query;
+    const s = getSession(sessionId);
+    if (!s) return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?><Response><Say>Demo session not found.</Say><Hangup/></Response>`);
+
+    const baseUrl = getDemoBaseUrl(req);
+
+    res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Dial>
+    <Conference
+      name="${esc(s.conferenceName)}"
+      startConferenceOnEnter="true"
+      endConferenceOnExit="true"
+      beep="false"
+      waitUrl=""
+      statusCallback="${esc(baseUrl)}/webhooks/twilio/demo-conference-status?sessionId=${esc(sessionId)}"
+      statusCallbackEvent="start join"
+      statusCallbackMethod="POST"
+    />
+  </Dial>
+</Response>`);
+  })
+);
+
+// Contractor's phone is answered — join the named conference
+router.post(
+  "/twilio/demo-contractor-join",
+  asyncHandler(async (req, res) => {
+    const { sessionId } = req.query;
+    const s = getSession(sessionId);
+    if (!s) return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`);
+
+    res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Dial>
+    <Conference
+      name="${esc(s.conferenceName)}"
+      startConferenceOnEnter="false"
+      endConferenceOnExit="false"
+      beep="false"
+      waitUrl=""
+    />
+  </Dial>
+</Response>`);
+  })
+);
+
+// Conference status — fired when Breat joins; we then call the contractor
+router.post(
+  "/twilio/demo-conference-status",
+  asyncHandler(async (req, res) => {
+    const { sessionId } = req.query;
+    const s = getSession(sessionId);
+    if (!s) return res.sendStatus(200);
+
+    const conferenceSid = req.body.ConferenceSid;
+    const participantCallSid = req.body.CallSid;
+    const event = req.body.StatusCallbackEvent;
+
+    if (event === "conference-start" || event === "participant-join") {
+      // Store conference SID on first join (Breat)
+      if (!s.conferenceSid && conferenceSid) {
+        updateSession(sessionId, { conferenceSid });
+      }
+
+      // Once Breat is in, call the contractor
+      if (s.status === "calling" && !s.contractorCallSid) {
+        updateSession(sessionId, { status: "dialing_contractor" });
+        callContractor(sessionId).catch((e) => console.error("[demo] callContractor failed:", e.message));
+      }
+
+      // When contractor joins (second participant), mark connected
+      if (s.contractorCallSid && participantCallSid === s.contractorCallSid) {
+        updateSession(sessionId, { status: "connected" });
+      }
+    }
+
+    res.sendStatus(200);
+  })
+);
+
+// Demo call status — track call SIDs and completion
+router.post(
+  "/twilio/demo-call-status",
+  asyncHandler(async (req, res) => {
+    const { sessionId, leg } = req.query;
+    const s = getSession(sessionId);
+    if (!s) return res.sendStatus(200);
+
+    const callStatus = req.body.CallStatus;
+    const callSid = req.body.CallSid;
+
+    if (leg === "owner" && callStatus === "in-progress") {
+      updateSession(sessionId, { breatCallSid: callSid });
+    }
+    if (leg === "contractor" && callStatus === "in-progress") {
+      updateSession(sessionId, { contractorCallSid: callSid, status: "connected" });
+    }
+    if (callStatus === "completed" && s.status !== "ended") {
+      if (leg === "owner") updateSession(sessionId, { status: "ended" });
+    }
+
+    res.sendStatus(200);
+  })
+);
+
+// Contractor's call is redirected here for AI demo — stream to OpenAI Realtime
+router.post(
+  "/twilio/demo-ai-voice",
+  asyncHandler(async (req, res) => {
+    const { sessionId } = req.query;
+    const s = getSession(sessionId);
+    if (!s) return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`);
+
+    const baseUrl = getDemoBaseUrl(req);
+    const wsBase = baseUrl.replace(/^https/i, "wss").replace(/^http/i, "ws");
+    const streamUrl = `${wsBase}/webhooks/twilio/demo-voice-stream`;
+
+    res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Connect>
+    <Stream url="${esc(streamUrl)}">
+      <Parameter name="sessionId" value="${esc(sessionId)}" />
+      <Parameter name="businessName" value="${esc(s.businessName)}" />
+    </Stream>
+  </Connect>
+</Response>`);
+  })
+);
+
+// Contractor rejoins the conference after AI demo ends
+router.post(
+  "/twilio/demo-rejoin",
+  asyncHandler(async (req, res) => {
+    const { sessionId } = req.query;
+    const s = getSession(sessionId);
+    if (!s) return res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`);
+
+    res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Dial>
+    <Conference
+      name="${esc(s.conferenceName)}"
+      startConferenceOnEnter="false"
+      endConferenceOnExit="false"
+      beep="false"
+      waitUrl=""
+    />
+  </Dial>
+</Response>`);
   })
 );
 

@@ -30,6 +30,8 @@ import { startReminderScheduler } from "./services/reminderService.js";
 import { seedDemoAccount } from "./services/demoSeed.js";
 import { WebSocketServer } from "ws";
 import { handleTwilioVoiceStream, aiVoiceEnabled } from "./services/realtimeVoiceService.js";
+import { handleDemoVoiceStream } from "./services/demoCallService.js";
+import demoCallRoutes from "./routes/demoCallRoutes.js";
 
 if (!process.env.JWT_SECRET) {
   process.env.JWT_SECRET = "local-dev-only-secret";
@@ -131,6 +133,7 @@ app.use("/webhooks", webhookRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/sms-registration", smsRegistrationRoutes);
 app.use("/api/invites", inviteRoutes);
+app.use("/api/demo-call", demoCallRoutes);
 
 // Serve the React frontend in production
 const clientDist = path.join(serverDir, "..", "client", "dist");
@@ -168,15 +171,21 @@ server.listen(port, () => {
   seedDemoAccount();
 });
 
-if (aiVoiceEnabled()) {
-  const wss = new WebSocketServer({ noServer: true });
-  wss.on("connection", handleTwilioVoiceStream);
-  server.on("upgrade", (req, socket, head) => {
-    if (req.url === "/webhooks/twilio/voice-stream") {
-      wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));
-    } else {
-      socket.destroy();
-    }
-  });
-  console.log("[voice-ai] WebSocket listener active at /webhooks/twilio/voice-stream");
-}
+const voiceWss = aiVoiceEnabled() ? new WebSocketServer({ noServer: true }) : null;
+if (voiceWss) voiceWss.on("connection", handleTwilioVoiceStream);
+
+const demoWss = new WebSocketServer({ noServer: true });
+demoWss.on("connection", handleDemoVoiceStream);
+
+server.on("upgrade", (req, socket, head) => {
+  if (req.url === "/webhooks/twilio/voice-stream" && voiceWss) {
+    voiceWss.handleUpgrade(req, socket, head, (ws) => voiceWss.emit("connection", ws, req));
+  } else if (req.url === "/webhooks/twilio/demo-voice-stream") {
+    demoWss.handleUpgrade(req, socket, head, (ws) => demoWss.emit("connection", ws, req));
+  } else {
+    socket.destroy();
+  }
+});
+
+if (aiVoiceEnabled()) console.log("[voice-ai] WebSocket listener active at /webhooks/twilio/voice-stream");
+console.log("[demo-ai] WebSocket listener active at /webhooks/twilio/demo-voice-stream");

@@ -5,6 +5,7 @@ import { api, getCache, setCache } from "../api/client.js";
 import { Badge } from "../components/Layout.jsx";
 import { displayLeadInitial, LeadName } from "../components/RedactedPhone.jsx";
 import { isLeadNew } from "../utils/seenLeads.js";
+import DemoCallPanel from "../components/DemoCallPanel.jsx";
 
 function fmt(e164) {
   const d = (e164 || "").replace(/\D/g, "");
@@ -241,6 +242,7 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+      <DemoCallPanel />
     </div>
   );
 }
