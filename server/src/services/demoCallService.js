@@ -182,10 +182,24 @@ IF ASKED HOW THE SYSTEM WORKS:
 Say: "I answer every missed call, qualify the lead, collect the job details, and book them right into the calendar — automatically. The team just shows up to confirmed jobs."
 
 AFTER THE DEMO FLOW:
-Once you have collected the key information and confirmed an appointment time, give a warm natural closing:
+Once you have collected the key info and confirmed an appointment, give a warm closing:
 "Perfect — I've got everything I need. We'll send over a confirmation text shortly. Is there anything else I can help you with?"
 
-Then STAY ON THE LINE and remain available for any follow-up questions. Do NOT end the call, do NOT say goodbye and go silent, do NOT hang up. The business owner will reconnect when ready. If there is silence after your closing, just wait — someone will be back on the line shortly.`;
+Then wait for their response. Stay engaged.
+
+WHEN TO CALL end_call — STRICT RULES:
+Only call end_call when ALL of the following are true:
+1. You have fully completed the demo (collected service info AND confirmed an appointment time)
+2. The caller has explicitly and clearly said they are done — phrases like "no that's all", "nope I'm good", "alright bye", "thanks goodbye", "sounds good, talk later", "perfect, thank you, bye"
+3. You have spoken your goodbye out loud first — something like "Perfect, we'll see you then — have a great day!"
+
+DO NOT call end_call if:
+- The caller just said "thanks" or "great" as a filler mid-conversation
+- The caller is still asking questions
+- You haven't reached the appointment confirmation yet
+- You are unsure whether they are truly done
+
+Only call end_call when it is unmistakably clear the conversation has ended.`;
 
 function encodeMulaw(sample) {
   const BIAS = 0x84, CLIP = 32635;
@@ -252,6 +266,7 @@ export function handleDemoVoiceStream(twilioWs) {
   let twilioStartReceived = false;
   let openAiConnected = false;
   let endRequested = false;
+  let endTimer = null;
 
   const model = process.env.OPENAI_REALTIME_MODEL || "gpt-4o-realtime-preview";
   const openAiWs = new WebSocket(
@@ -270,8 +285,15 @@ export function handleDemoVoiceStream(twilioWs) {
         type: "realtime",
         output_modalities: ["audio"],
         instructions: `${DEMO_INSTRUCTIONS}\n\nBusiness name: ${businessName}`,
-        tools: [],
-        tool_choice: "none",
+        tools: [
+          {
+            type: "function",
+            name: "end_call",
+            description: "Reconnect the business owner. Only call this after you have spoken your goodbye out loud AND the caller has explicitly said they are done.",
+            parameters: { type: "object", properties: {}, required: [] },
+          },
+        ],
+        tool_choice: "auto",
         audio: {
           input: {
             format: { type: "audio/pcmu" },
@@ -344,6 +366,24 @@ export function handleDemoVoiceStream(twilioWs) {
     if (event.type === "response.output_audio.done") {
       aiSpeaking = false;
       callerAudioAllowedAt = Date.now() + 1500;
+    }
+
+    // Detect end_call — only fires when AI decides conversation is clearly done
+    const fnName =
+      event.item?.name ||
+      event.name ||
+      event.response?.output?.find?.((i) => i?.name)?.name;
+    const isEndCall =
+      fnName === "end_call" ||
+      (event.type === "response.output_item.done" &&
+        event.item?.type === "function_call" &&
+        event.item?.name === "end_call");
+
+    if (isEndCall) {
+      console.log("[demo-ai] AI called end_call — reconnecting Breat");
+      if (!endRequested && !endTimer) {
+        endTimer = setTimeout(finishDemo, aiSpeaking ? 2500 : 800);
+      }
     }
 
     if (event.type === "error") {
