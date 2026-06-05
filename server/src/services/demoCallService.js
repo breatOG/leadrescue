@@ -311,12 +311,19 @@ export function handleDemoVoiceStream(twilioWs) {
     if (endRequested) return;
     endRequested = true;
     if (endTimer) clearTimeout(endTimer);
-    console.log(`[demo-ai] Demo ending, reconnecting sessionId=${sessionId}`);
+    console.log(`[demo-ai] AI demo ending, un-holding Breat sessionId=${sessionId}`);
 
-    if (sessionId) {
-      reconnect(sessionId).catch((e) => console.error("[demo-ai] Reconnect failed:", e.message));
+    // Un-hold Breat first — contractor rejoins via TwiML fallback conference when stream closes
+    const s = getSession(sessionId);
+    if (s && s.conferenceSid && s.breatCallSid) {
+      await client().conferences(s.conferenceSid)
+        .participants(s.breatCallSid)
+        .update({ hold: false })
+        .catch((e) => console.error("[demo-ai] Un-hold Breat failed:", e.message));
+      updateSession(sessionId, { status: "connected", timeLimitTimer: null });
     }
 
+    // Close the stream — Twilio executes the fallback <Dial><Conference> automatically
     if (openAiWs.readyState === WebSocket.OPEN) openAiWs.close();
     if (twilioWs.readyState === WebSocket.OPEN) twilioWs.close();
   }

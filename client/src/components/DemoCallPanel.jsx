@@ -321,7 +321,7 @@ export default function DemoCallPanel() {
                   }}
                 >
                   <Bot size={15} />
-                  {loading ? "Handing off..." : "Hand to AI"}
+                  {loading ? "Handing off..." : "Leave — Let AI Handle"}
                 </button>
               )}
 
@@ -339,7 +339,7 @@ export default function DemoCallPanel() {
                   }}
                 >
                   <UserRound size={15} />
-                  {loading ? "Reconnecting..." : "Take Back Call"}
+                  {loading ? "Joining..." : "Join Call"}
                 </button>
               )}
 

@@ -1085,6 +1085,15 @@ router.post(
       <Parameter name="businessName" value="${esc(s.businessName)}" />
     </Stream>
   </Connect>
+  <Dial>
+    <Conference
+      name="${esc(s.conferenceName)}"
+      startConferenceOnEnter="false"
+      endConferenceOnExit="false"
+      beep="false"
+      waitUrl=""
+    />
+  </Dial>
 </Response>`);
   })
 );
