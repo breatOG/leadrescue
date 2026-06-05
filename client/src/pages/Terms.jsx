@@ -61,11 +61,13 @@ export default function Terms() {
       <p style={s.p}>By using LeadRescue's SMS features, you represent and warrant that:</p>
       <ul style={s.ul}>
         <li style={s.li}>You have obtained the required A2P 10DLC registration for your messaging campaign, or you will complete it promptly through the LeadRescue platform</li>
-        <li style={s.li}>Your use of SMS messaging complies with the Telephone Consumer Protection Act (TCPA), CTIA messaging guidelines, and all applicable federal, state, and carrier regulations</li>
-        <li style={s.li}>You will honor all customer opt-out (STOP) requests immediately</li>
-        <li style={s.li}>You will not use the Service to send messages to individuals who have previously opted out</li>
+        <li style={s.li}>SMS messages are sent only to customers who have provided explicit written consent via a web form containing a clear opt-in checkbox, in accordance with CTIA guidelines and the Telephone Consumer Protection Act (TCPA)</li>
+        <li style={s.li}>Your opt-in forms include the required disclosure: "Message frequency varies. Msg & data rates may apply. Reply STOP to opt out or HELP for help."</li>
+        <li style={s.li}>Your use of SMS messaging complies with the TCPA, CTIA messaging guidelines, and all applicable federal, state, and carrier regulations</li>
+        <li style={s.li}>You will honor all customer opt-out (STOP) requests immediately and will not send further messages to opted-out numbers</li>
+        <li style={s.li}>You will not use the Service to send messages to individuals who have previously opted out or who have not provided explicit consent</li>
       </ul>
-      <p style={s.p}>LeadRescue is not responsible for carrier filtering, message delivery failures, or regulatory penalties that result from your failure to maintain compliant A2P registration or to follow SMS best practices.</p>
+      <p style={s.p}>LeadRescue is not responsible for carrier filtering, message delivery failures, or regulatory penalties that result from your failure to maintain compliant A2P registration, proper opt-in collection, or SMS best practices.</p>
 
       <h2 style={s.h2}>7. AI Services and Limitations</h2>
       <p style={s.p}>LeadRescue uses AI language models to generate responses on behalf of your business. You acknowledge that:</p>

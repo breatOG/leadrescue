@@ -44,10 +44,11 @@ export default function Privacy() {
       </ul>
 
       <h2 style={s.h2}>3. SMS Messaging and Customer Consent</h2>
-      <p style={s.p}>LeadRescue sends SMS messages only to customers who initiate contact with your business by calling or texting your LeadRescue phone number first. Receiving an inbound message or call constitutes opt-in consent to receive automated follow-up messages related to the service request.</p>
+      <p style={s.p}>LeadRescue sends SMS messages only to customers who have provided explicit written consent. Consent is collected through a web form on the business website or a LeadRescue-hosted contact page, where the customer checks a required box stating: "I agree to receive SMS messages from [Business Name] regarding my service request, appointment scheduling, and service updates. Message frequency varies. Msg & data rates may apply. Reply STOP to opt out or HELP for help." No SMS message is sent until the customer has checked this box and submitted the form.</p>
       <p style={s.p}><strong>Message frequency:</strong> Typically 1–6 messages per service request, depending on the conversation and appointment scheduling needs.</p>
       <p style={s.p}><strong>Message and data rates may apply</strong> based on the customer's mobile carrier plan.</p>
-      <p style={s.p}><strong>Opt-out:</strong> Customers can reply STOP at any time to stop receiving messages. They may also reply HELP for assistance. LeadRescue honors all opt-out requests immediately.</p>
+      <p style={s.p}><strong>Opt-out:</strong> Customers can reply STOP at any time to stop receiving messages. They may also reply HELP for assistance. LeadRescue honors all opt-out requests immediately and will not send further messages to opted-out numbers.</p>
+      <p style={s.p}><strong>Opt-in keywords:</strong> Customers may also text START, YES, or JOIN to opt in to messages from a business number.</p>
       <p style={s.p}><strong>Mobile number non-sharing:</strong> We do not sell, rent, share, or transfer customer mobile phone numbers or SMS consent to any third party for marketing or promotional purposes.</p>
 
       <h2 style={s.h2}>4. AI Processing</h2>
