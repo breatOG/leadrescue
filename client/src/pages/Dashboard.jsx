@@ -135,7 +135,7 @@ export default function Dashboard() {
   const newCount = data.recentConversations.filter(isLeadNew).length;
 
   useEffect(() => {
-    document.title = newCount > 0 ? `(${newCount}) LeadRescue` : "LeadRescue";
+    document.title = "LeadRescue";
   }, [newCount]);
 
   return (

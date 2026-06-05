@@ -94,7 +94,7 @@ export function Layout() {
   }, [dismissedActivityKey]);
 
   useEffect(() => {
-    document.title = newActivityCount > 0 ? `(${newActivityCount}) LeadRescue` : "LeadRescue";
+    document.title = "LeadRescue";
   }, [newActivityCount]);
 
   function logout() {
